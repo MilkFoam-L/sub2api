@@ -186,6 +186,7 @@ type SystemSettings struct {
 	AntigravityUserAgentVersion          string `json:"antigravity_user_agent_version"`
 	OpenAIImagesResponsesReasoningEffort string `json:"openai_images_responses_reasoning_effort"`
 	OpenAICodexUserAgent                 string `json:"openai_codex_user_agent"`
+	OpenAIAllowClaudeCodeCodexPlugin     bool   `json:"openai_allow_claude_code_codex_plugin"`
 
 	// Web Search Emulation
 	WebSearchEmulationEnabled bool `json:"web_search_emulation_enabled"`
