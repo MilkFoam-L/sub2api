@@ -54,6 +54,7 @@ interface MockAuthState {
   isSimpleMode: boolean
   backendModeEnabled: boolean
   hasPendingAuthSession: boolean
+  availableChannelsEnabled?: boolean
   setupNeedsSetup?: boolean
 }
 
@@ -112,6 +113,10 @@ function simulateGuard(
   // 需要管理员但不是管理员
   if (requiresAdmin && !authState.isAdmin) {
     return '/dashboard'
+  }
+
+  if (toMeta.requiresAvailableChannels && authState.availableChannelsEnabled !== true) {
+    return authState.isAdmin ? '/admin/settings' : '/dashboard'
   }
 
   // 简易模式限制
@@ -226,6 +231,20 @@ describe('路由守卫逻辑', () => {
       const redirect = simulateGuard('/admin/users', { requiresAdmin: true }, authState)
       expect(redirect).toBe('/dashboard')
     })
+
+    it('可用渠道关闭时访问 /models 重定向到 /dashboard', () => {
+      const redirect = simulateGuard('/models', { requiresAvailableChannels: true }, authState)
+      expect(redirect).toBe('/dashboard')
+    })
+
+    it('可用渠道开启时访问 /models 允许通过', () => {
+      const redirect = simulateGuard(
+        '/models',
+        { requiresAvailableChannels: true },
+        { ...authState, availableChannelsEnabled: true }
+      )
+      expect(redirect).toBeNull()
+    })
   })
 
   // --- 已认证管理员 ---
@@ -252,6 +271,11 @@ describe('路由守卫逻辑', () => {
     it('访问用户页面允许通过', () => {
       const redirect = simulateGuard('/dashboard', {}, authState)
       expect(redirect).toBeNull()
+    })
+
+    it('可用渠道关闭时访问 /models 重定向到 /admin/settings', () => {
+      const redirect = simulateGuard('/models', { requiresAvailableChannels: true }, authState)
+      expect(redirect).toBe('/admin/settings')
     })
   })
 

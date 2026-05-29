@@ -2,6 +2,7 @@ package handler
 
 import (
 	"sort"
+	"strings"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
 	"github.com/Wei-Shaw/sub2api/internal/server/middleware"
@@ -153,6 +154,15 @@ func (h *AvailableChannelHandler) List(c *gin.Context) {
 			continue
 		}
 		sections := buildPlatformSections(ch, visibleGroups)
+		if !ch.RestrictModels {
+			visibleRefs := filterAvailableGroupRefs(ch.Groups, allowedGroupIDs)
+			groupModels, err := h.channelService.ListSupportedModelsForGroups(c.Request.Context(), visibleRefs)
+			if err != nil {
+				response.ErrorFrom(c, err)
+				return
+			}
+			mergeGroupSupportedModels(sections, groupModels)
+		}
 		if len(sections) == 0 {
 			continue
 		}
@@ -202,6 +212,69 @@ func buildPlatformSections(
 	return sections
 }
 
+func mergeGroupSupportedModels(
+	sections []userChannelPlatformSection,
+	groupModels map[int64][]service.SupportedModel,
+) {
+	if len(sections) == 0 || len(groupModels) == 0 {
+		return
+	}
+	for i := range sections {
+		sections[i].SupportedModels = mergeSupportedModelsForSection(
+			sections[i].SupportedModels,
+			sections[i].Groups,
+			groupModels,
+			sections[i].Platform,
+		)
+	}
+}
+
+func mergeSupportedModelsForSection(
+	configured []userSupportedModel,
+	groups []userAvailableGroup,
+	groupModels map[int64][]service.SupportedModel,
+	platform string,
+) []userSupportedModel {
+	seen := make(map[string]struct{}, len(configured))
+	out := make([]userSupportedModel, 0, len(configured))
+	for _, model := range configured {
+		out = append(out, model)
+		seen[supportedModelKey(model.Platform, model.Name)] = struct{}{}
+	}
+
+	for _, group := range groups {
+		if group.Platform != platform {
+			continue
+		}
+		for _, model := range groupModels[group.ID] {
+			if model.Platform != platform {
+				continue
+			}
+			key := supportedModelKey(model.Platform, model.Name)
+			if _, ok := seen[key]; ok {
+				continue
+			}
+			seen[key] = struct{}{}
+			out = append(out, userSupportedModel{
+				Name:     model.Name,
+				Platform: model.Platform,
+				Pricing:  toUserPricing(model.Pricing),
+			})
+		}
+	}
+	sort.SliceStable(out, func(i, j int) bool {
+		if out[i].Platform != out[j].Platform {
+			return out[i].Platform < out[j].Platform
+		}
+		return out[i].Name < out[j].Name
+	})
+	return out
+}
+
+func supportedModelKey(platform, name string) string {
+	return strings.TrimSpace(platform) + "\x00" + strings.ToLower(strings.TrimSpace(name))
+}
+
 // filterUserVisibleGroups 仅保留用户可访问的分组。
 func filterUserVisibleGroups(
 	groups []service.AvailableGroupRef,
@@ -220,6 +293,20 @@ func filterUserVisibleGroups(
 			RateMultiplier:   g.RateMultiplier,
 			IsExclusive:      g.IsExclusive,
 		})
+	}
+	return visible
+}
+
+func filterAvailableGroupRefs(
+	groups []service.AvailableGroupRef,
+	allowed map[int64]struct{},
+) []service.AvailableGroupRef {
+	visible := make([]service.AvailableGroupRef, 0, len(groups))
+	for _, group := range groups {
+		if _, ok := allowed[group.ID]; !ok {
+			continue
+		}
+		visible = append(visible, group)
 	}
 	return visible
 }

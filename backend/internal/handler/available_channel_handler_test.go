@@ -155,3 +155,86 @@ func TestBuildPlatformSections_GroupsByPlatform(t *testing.T) {
 	require.Len(t, sections[0].SupportedModels, 1)
 	require.Equal(t, "claude-sonnet-4-6", sections[0].SupportedModels[0].Name)
 }
+
+func TestBuildPlatformSections_IncludesVisibleGroupAccountModels(t *testing.T) {
+	ch := service.AvailableChannel{
+		Name: "ch",
+		SupportedModels: []service.SupportedModel{
+			{Name: "gpt-configured", Platform: "openai"},
+		},
+	}
+	visible := []userAvailableGroup{
+		{ID: 1, Name: "public", Platform: "openai", IsExclusive: false},
+	}
+	groupModels := map[int64][]service.SupportedModel{
+		1: {
+			{Name: "gpt-account", Platform: "openai"},
+		},
+		2: {
+			{Name: "gpt-hidden-exclusive", Platform: "openai"},
+		},
+	}
+
+	sections := buildPlatformSections(ch, visible)
+	mergeGroupSupportedModels(sections, groupModels)
+
+	require.Len(t, sections, 1)
+	require.Equal(t, "openai", sections[0].Platform)
+	require.ElementsMatch(t, []string{"gpt-configured", "gpt-account"}, supportedModelNames(sections[0].SupportedModels))
+}
+
+func TestBuildPlatformSections_ChannelModelWinsWhenAccountModelDuplicates(t *testing.T) {
+	configuredPricing := &service.ChannelModelPricing{BillingMode: service.BillingModeToken}
+	ch := service.AvailableChannel{
+		Name: "ch",
+		SupportedModels: []service.SupportedModel{
+			{Name: "gpt-5", Platform: "openai", Pricing: configuredPricing},
+		},
+	}
+	visible := []userAvailableGroup{{ID: 1, Name: "public", Platform: "openai"}}
+	groupModels := map[int64][]service.SupportedModel{
+		1: {
+			{Name: "GPT-5", Platform: "openai", Pricing: nil},
+		},
+	}
+
+	sections := buildPlatformSections(ch, visible)
+	mergeGroupSupportedModels(sections, groupModels)
+
+	require.Len(t, sections, 1)
+	require.Len(t, sections[0].SupportedModels, 1)
+	require.Equal(t, "gpt-5", sections[0].SupportedModels[0].Name)
+	require.NotNil(t, sections[0].SupportedModels[0].Pricing)
+}
+
+func TestBuildPlatformSections_RestrictModelsKeepsConfiguredModelsOnly(t *testing.T) {
+	ch := service.AvailableChannel{
+		Name:           "ch",
+		RestrictModels: true,
+		SupportedModels: []service.SupportedModel{
+			{Name: "gpt-configured", Platform: "openai"},
+		},
+	}
+	visible := []userAvailableGroup{{ID: 1, Name: "public", Platform: "openai"}}
+	groupModels := map[int64][]service.SupportedModel{
+		1: {
+			{Name: "gpt-account", Platform: "openai"},
+		},
+	}
+
+	sections := buildPlatformSections(ch, visible)
+	if !ch.RestrictModels {
+		mergeGroupSupportedModels(sections, groupModels)
+	}
+
+	require.Len(t, sections, 1)
+	require.Equal(t, []string{"gpt-configured"}, supportedModelNames(sections[0].SupportedModels))
+}
+
+func supportedModelNames(models []userSupportedModel) []string {
+	names := make([]string, 0, len(models))
+	for _, model := range models {
+		names = append(names, model.Name)
+	}
+	return names
+}
