@@ -148,4 +148,27 @@ describe('ModelProbeModal', () => {
 
     expect(wrapper.emitted('apply')?.[0]).toEqual([['model-1']])
   })
+
+  it('手动选择不会超过最大探测数量', async () => {
+    const wrapper = mountModal()
+
+    const inputs = wrapper.findAll('input')
+    await inputs[1].setValue('sk-test')
+    await findButton(wrapper, 'admin.accounts.modelProbe.discover').trigger('click')
+    await flushPromises()
+
+    await findButton(wrapper, 'model-21').trigger('click')
+    expect(wrapper.text()).toContain('admin.accounts.modelProbe.maxSelectionHint:20')
+
+    await findButton(wrapper, 'admin.accounts.modelProbe.testSelected').trigger('click')
+    await flushPromises()
+
+    expect(adminAPI.accounts.probeModels).toHaveBeenCalledWith({
+      platform: 'openai',
+      base_url: '',
+      api_key: 'sk-test',
+      mode: 'responses',
+      models: Array.from({ length: 20 }, (_, index) => `model-${index + 1}`)
+    })
+  })
 })

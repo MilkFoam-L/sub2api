@@ -114,4 +114,34 @@ describe('ModelWhitelistSelector', () => {
     expect(wrapper.emitted('update:modelValue')?.[0]).toEqual([['gpt-5.4', 'gpt-5.4-openai-compact']])
     expect(showSuccessMock).toHaveBeenCalledWith('admin.accounts.modelProbe.addedModels:1')
   })
+
+  it('切换平台后清空本地探测候选模型', async () => {
+    const wrapper = mount(ModelWhitelistSelector, {
+      props: {
+        modelValue: [],
+        platform: 'openai'
+      },
+      global: {
+        stubs: {
+          ModelIcon: true,
+          Icon: true
+        }
+      }
+    })
+
+    await wrapper.findAll('button').find(button => button.text().includes('admin.accounts.modelProbe.openButton'))!.trigger('click')
+    await wrapper.get('[data-test="probe-modal"] button').trigger('click')
+    await wrapper.setProps({ modelValue: ['gpt-5.4-openai-compact'] })
+
+    expect(wrapper.text()).toContain('gpt-5.4-openai-compact')
+
+    await wrapper.setProps({
+      modelValue: [],
+      platform: 'anthropic'
+    })
+    await wrapper.find('.cursor-pointer').trigger('click')
+    await wrapper.find('input').setValue('gpt-5.4-openai-compact')
+
+    expect(wrapper.text()).toContain('admin.accounts.noMatchingModels')
+  })
 })

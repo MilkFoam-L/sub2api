@@ -55,6 +55,7 @@ interface MockAuthState {
   backendModeEnabled: boolean
   hasPendingAuthSession: boolean
   availableChannelsEnabled?: boolean
+  availableChannelsLoaded?: boolean
   setupNeedsSetup?: boolean
 }
 
@@ -115,7 +116,11 @@ function simulateGuard(
     return '/dashboard'
   }
 
-  if (toMeta.requiresAvailableChannels && authState.availableChannelsEnabled !== true) {
+  if (
+    toMeta.requiresAvailableChannels &&
+    authState.availableChannelsLoaded === true &&
+    authState.availableChannelsEnabled !== true
+  ) {
     return authState.isAdmin ? '/admin/settings' : '/dashboard'
   }
 
@@ -125,6 +130,8 @@ function simulateGuard(
       '/admin/groups',
       '/admin/subscriptions',
       '/admin/redeem',
+      '/models',
+      '/available-channels',
       '/subscriptions',
       '/redeem',
     ]
@@ -233,7 +240,11 @@ describe('路由守卫逻辑', () => {
     })
 
     it('可用渠道关闭时访问 /models 重定向到 /dashboard', () => {
-      const redirect = simulateGuard('/models', { requiresAvailableChannels: true }, authState)
+      const redirect = simulateGuard(
+        '/models',
+        { requiresAvailableChannels: true },
+        { ...authState, availableChannelsLoaded: true, availableChannelsEnabled: false }
+      )
       expect(redirect).toBe('/dashboard')
     })
 
@@ -241,8 +252,13 @@ describe('路由守卫逻辑', () => {
       const redirect = simulateGuard(
         '/models',
         { requiresAvailableChannels: true },
-        { ...authState, availableChannelsEnabled: true }
+        { ...authState, availableChannelsLoaded: true, availableChannelsEnabled: true }
       )
+      expect(redirect).toBeNull()
+    })
+
+    it('公共设置未加载时访问 /models 允许通过', () => {
+      const redirect = simulateGuard('/models', { requiresAvailableChannels: true }, authState)
       expect(redirect).toBeNull()
     })
   })
@@ -274,7 +290,11 @@ describe('路由守卫逻辑', () => {
     })
 
     it('可用渠道关闭时访问 /models 重定向到 /admin/settings', () => {
-      const redirect = simulateGuard('/models', { requiresAvailableChannels: true }, authState)
+      const redirect = simulateGuard(
+        '/models',
+        { requiresAvailableChannels: true },
+        { ...authState, availableChannelsLoaded: true, availableChannelsEnabled: false }
+      )
       expect(redirect).toBe('/admin/settings')
     })
   })
@@ -303,6 +323,32 @@ describe('路由守卫逻辑', () => {
         hasPendingAuthSession: false,
       }
       const redirect = simulateGuard('/redeem', {}, authState)
+      expect(redirect).toBe('/dashboard')
+    })
+
+    it('普通用户简易模式直接访问模型广场重定向到 /dashboard', () => {
+      const authState: MockAuthState = {
+        isAuthenticated: true,
+        isAdmin: false,
+        isSimpleMode: true,
+        backendModeEnabled: false,
+        hasPendingAuthSession: false,
+        availableChannelsEnabled: true,
+      }
+      const redirect = simulateGuard('/models', { requiresAvailableChannels: true }, authState)
+      expect(redirect).toBe('/dashboard')
+    })
+
+    it('普通用户简易模式直接访问可用渠道重定向到 /dashboard', () => {
+      const authState: MockAuthState = {
+        isAuthenticated: true,
+        isAdmin: false,
+        isSimpleMode: true,
+        backendModeEnabled: false,
+        hasPendingAuthSession: false,
+        availableChannelsEnabled: true,
+      }
+      const redirect = simulateGuard('/available-channels', { requiresAvailableChannels: true }, authState)
       expect(redirect).toBe('/dashboard')
     })
 

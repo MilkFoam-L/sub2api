@@ -53,7 +53,7 @@
         >
           <Icon v-if="discovering" name="refresh" size="sm" class="animate-spin" :stroke-width="2" />
           <Icon v-else name="search" size="sm" :stroke-width="2" />
-          {{ discovering ? t('admin.accounts.modelProbe.discovering') : t('admin.accounts.modelProbe.discover') }}
+          {{ discovering ? discoveringLabel : discoverLabel }}
         </button>
         <button
           type="button"
@@ -87,7 +87,7 @@
         <div class="overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-dark-600 dark:bg-dark-700">
           <div class="flex items-center justify-between border-b border-gray-200 px-3 py-2 dark:border-dark-600">
             <div class="text-sm font-medium text-gray-800 dark:text-gray-100">
-              {{ t('admin.accounts.modelProbe.discoveredModels', { count: discoveredModels.length }) }}
+              {{ discoveredModelsLabel }}
             </div>
             <input
               v-model="searchQuery"
@@ -272,6 +272,19 @@ const modeHint = computed(() => {
   return t('admin.accounts.modelProbe.responsesHint')
 })
 
+const isAnthropic = computed(() => platform.value === 'anthropic')
+const discoverLabel = computed(() =>
+  isAnthropic.value ? t('admin.accounts.modelProbe.loadCandidates') : t('admin.accounts.modelProbe.discover')
+)
+const discoveringLabel = computed(() =>
+  isAnthropic.value ? t('admin.accounts.modelProbe.loadingCandidates') : t('admin.accounts.modelProbe.discovering')
+)
+const discoveredModelsLabel = computed(() =>
+  isAnthropic.value
+    ? t('admin.accounts.modelProbe.candidateModels', { count: discoveredModels.value.length })
+    : t('admin.accounts.modelProbe.discoveredModels', { count: discoveredModels.value.length })
+)
+
 const resultByModel = computed(() => new Map(testResults.value.map(result => [result.model, result])))
 
 const filteredModels = computed(() => {
@@ -365,7 +378,7 @@ const testSelectedModels = async () => {
       base_url: baseUrl.value.trim(),
       api_key: apiKey.value.trim(),
       mode: mode.value,
-      models: selectedModels.value.slice(0, maxProbeModels)
+      models: selectedModels.value
     })
     testResults.value = result.results || []
     const okCount = testResults.value.filter(item => item.ok).length
@@ -383,6 +396,10 @@ const toggleModel = (model: string) => {
   if (selectedModels.value.includes(model)) {
     selectedModels.value = selectedModels.value.filter(item => item !== model)
   } else {
+    if (selectedModels.value.length >= maxProbeModels) {
+      lastError.value = t('admin.accounts.modelProbe.maxSelectionHint', { count: maxProbeModels })
+      return
+    }
     selectedModels.value = [...selectedModels.value, model]
   }
 }

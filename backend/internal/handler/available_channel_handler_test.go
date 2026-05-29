@@ -3,6 +3,7 @@
 package handler
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -229,6 +230,54 @@ func TestBuildPlatformSections_RestrictModelsKeepsConfiguredModelsOnly(t *testin
 
 	require.Len(t, sections, 1)
 	require.Equal(t, []string{"gpt-configured"}, supportedModelNames(sections[0].SupportedModels))
+}
+
+func TestSupportedModelsForGroups_ReusesRequestCache(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodGet, "/api/v1/channels/available", nil)
+
+	repo := &countingAvailableAccountRepo{}
+	h := &AvailableChannelHandler{
+		channelService: service.NewChannelService(nil, nil, repo, nil, nil),
+	}
+	groups := []service.AvailableGroupRef{
+		{ID: 1, Platform: service.PlatformOpenAI},
+		{ID: 1, Platform: service.PlatformOpenAI},
+	}
+	cache := make(map[int64][]service.SupportedModel)
+
+	first, err := h.supportedModelsForGroups(c, groups, cache)
+	require.NoError(t, err)
+	second, err := h.supportedModelsForGroups(c, groups, cache)
+	require.NoError(t, err)
+
+	require.Equal(t, 1, repo.calls[1])
+	require.Equal(t, []service.SupportedModel{{Name: "gpt-cache", Platform: service.PlatformOpenAI}}, first[1])
+	require.Equal(t, first, second)
+}
+
+type countingAvailableAccountRepo struct {
+	calls map[int64]int
+}
+
+func (r *countingAvailableAccountRepo) ListSchedulableByGroupID(_ context.Context, groupID int64) ([]service.Account, error) {
+	if r.calls == nil {
+		r.calls = make(map[int64]int)
+	}
+	r.calls[groupID]++
+	return []service.Account{
+		{
+			ID:       10,
+			Platform: service.PlatformOpenAI,
+			Credentials: map[string]any{
+				"model_mapping": map[string]any{
+					"gpt-cache": "gpt-cache",
+				},
+			},
+		},
+	}, nil
 }
 
 func supportedModelNames(models []userSupportedModel) []string {

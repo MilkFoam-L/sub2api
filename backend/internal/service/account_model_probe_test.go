@@ -74,6 +74,22 @@ func TestAccountTestService_ModelProbeOpenAIResponsesMinimalRequest(t *testing.T
 	require.JSONEq(t, `{"model":"gpt-5.4","input":"ping","max_output_tokens":1}`, string(body))
 }
 
+func TestAccountTestService_ModelProbeAnthropicListUsesBuiltInCandidates(t *testing.T) {
+	upstream := &queuedHTTPUpstream{}
+	svc := &AccountTestService{httpUpstream: upstream, cfg: modelProbeTestConfig()}
+
+	result, err := svc.ProbeModelList(context.Background(), ModelProbeListInput{
+		Platform: PlatformAnthropic,
+		BaseURL:  "https://invalid.example.com",
+		APIKey:   "sk-ant-test",
+	})
+
+	require.NoError(t, err)
+	require.NotEmpty(t, result.Models)
+	require.Equal(t, "anthropic", result.Models[0].OwnedBy)
+	require.Empty(t, upstream.requests)
+}
+
 func TestAccountTestService_ModelProbeOpenAIChatCompletionsMinimalRequest(t *testing.T) {
 	upstream := &queuedHTTPUpstream{responses: []*http.Response{
 		newJSONResponse(http.StatusOK, `{"id":"chatcmpl_123","choices":[]}`),

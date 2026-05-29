@@ -144,6 +144,7 @@ func (h *AvailableChannelHandler) List(c *gin.Context) {
 		return
 	}
 
+	groupModelCache := make(map[int64][]service.SupportedModel)
 	out := make([]userAvailableChannel, 0, len(channels))
 	for _, ch := range channels {
 		if ch.Status != service.StatusActive {
@@ -156,7 +157,7 @@ func (h *AvailableChannelHandler) List(c *gin.Context) {
 		sections := buildPlatformSections(ch, visibleGroups)
 		if !ch.RestrictModels {
 			visibleRefs := filterAvailableGroupRefs(ch.Groups, allowedGroupIDs)
-			groupModels, err := h.channelService.ListSupportedModelsForGroups(c.Request.Context(), visibleRefs)
+			groupModels, err := h.supportedModelsForGroups(c, visibleRefs, groupModelCache)
 			if err != nil {
 				response.ErrorFrom(c, err)
 				return
@@ -174,6 +175,42 @@ func (h *AvailableChannelHandler) List(c *gin.Context) {
 	}
 
 	response.Success(c, out)
+}
+
+func (h *AvailableChannelHandler) supportedModelsForGroups(
+	c *gin.Context,
+	groups []service.AvailableGroupRef,
+	cache map[int64][]service.SupportedModel,
+) (map[int64][]service.SupportedModel, error) {
+	missing := make([]service.AvailableGroupRef, 0, len(groups))
+	seen := make(map[int64]struct{}, len(groups))
+	for _, group := range groups {
+		if _, ok := cache[group.ID]; ok {
+			continue
+		}
+		if _, ok := seen[group.ID]; ok {
+			continue
+		}
+		seen[group.ID] = struct{}{}
+		missing = append(missing, group)
+	}
+	if len(missing) > 0 {
+		models, err := h.channelService.ListSupportedModelsForGroups(c.Request.Context(), missing)
+		if err != nil {
+			return nil, err
+		}
+		for _, group := range missing {
+			cache[group.ID] = models[group.ID]
+		}
+	}
+
+	out := make(map[int64][]service.SupportedModel, len(groups))
+	for _, group := range groups {
+		if models, ok := cache[group.ID]; ok && len(models) > 0 {
+			out[group.ID] = models
+		}
+	}
+	return out, nil
 }
 
 // buildPlatformSections 把一个渠道按 visibleGroups 的平台集合拆成有序的 section 列表：

@@ -844,7 +844,7 @@ router.beforeEach(async (to, _from, next) => {
     if (!appStore.cachedPublicSettings) {
       await appStore.fetchPublicSettings()
     }
-    if (!isFeatureFlagEnabled(FeatureFlags.availableChannels)) {
+    if (appStore.cachedPublicSettings && !isFeatureFlagEnabled(FeatureFlags.availableChannels)) {
       next(authStore.isAdmin ? '/admin/settings' : '/dashboard')
       return
     }
@@ -856,6 +856,8 @@ router.beforeEach(async (to, _from, next) => {
       '/admin/groups',
       '/admin/subscriptions',
       '/admin/redeem',
+      '/models',
+      '/available-channels',
       '/subscriptions',
       '/redeem'
     ]

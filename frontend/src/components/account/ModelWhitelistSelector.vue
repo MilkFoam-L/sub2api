@@ -144,7 +144,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { accountsAPI } from '@/api/admin/accounts'
@@ -193,6 +193,11 @@ const normalizedPlatforms = computed(() => {
 })
 
 const primaryPlatform = computed(() => normalizedPlatforms.value[0] || props.platform || 'openai')
+const probeScopeKey = computed(() => [
+  props.accountId ?? '',
+  props.platform ?? '',
+  normalizedPlatforms.value.join(',')
+].join('|'))
 
 const upstreamSyncPlatforms = new Set(['anthropic', 'openai', 'gemini', 'antigravity'])
 const canSyncUpstream = computed(() => {
@@ -233,6 +238,10 @@ const filteredModels = computed(() => {
   return availableOptions.value.filter(
     m => m.value.toLowerCase().includes(query) || m.label.toLowerCase().includes(query)
   )
+})
+
+watch(probeScopeKey, () => {
+  probedModels.value = []
 })
 
 const toggleDropdown = () => {
