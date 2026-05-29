@@ -26,29 +26,38 @@ const {
   adminSettingsFetch,
   showError,
   showSuccess,
-} = vi.hoisted(() => ({
-  getSettings: vi.fn(),
-  updateSettings: vi.fn(),
-  getWebSearchEmulationConfig: vi.fn(),
-  updateWebSearchEmulationConfig: vi.fn(),
-  getAdminApiKey: vi.fn(),
-  getOverloadCooldownSettings: vi.fn(),
-  getRateLimit429CooldownSettings: vi.fn(),
-  updateRateLimit429CooldownSettings: vi.fn(),
-  getStreamTimeoutSettings: vi.fn(),
-  getRectifierSettings: vi.fn(),
-  getBetaPolicySettings: vi.fn(),
-  getGroups: vi.fn(),
-  listProxies: vi.fn(),
-  getProviders: vi.fn(),
-  updateProvider: vi.fn(),
-  createProvider: vi.fn(),
-  deleteProvider: vi.fn(),
-  fetchPublicSettings: vi.fn(),
-  adminSettingsFetch: vi.fn(),
-  showError: vi.fn(),
-  showSuccess: vi.fn(),
-}));
+} = vi.hoisted(() => {
+  vi.stubGlobal("localStorage", {
+    getItem: vi.fn(() => null),
+    setItem: vi.fn(),
+    removeItem: vi.fn(),
+    clear: vi.fn(),
+  });
+
+  return {
+    getSettings: vi.fn(),
+    updateSettings: vi.fn(),
+    getWebSearchEmulationConfig: vi.fn(),
+    updateWebSearchEmulationConfig: vi.fn(),
+    getAdminApiKey: vi.fn(),
+    getOverloadCooldownSettings: vi.fn(),
+    getRateLimit429CooldownSettings: vi.fn(),
+    updateRateLimit429CooldownSettings: vi.fn(),
+    getStreamTimeoutSettings: vi.fn(),
+    getRectifierSettings: vi.fn(),
+    getBetaPolicySettings: vi.fn(),
+    getGroups: vi.fn(),
+    listProxies: vi.fn(),
+    getProviders: vi.fn(),
+    updateProvider: vi.fn(),
+    createProvider: vi.fn(),
+    deleteProvider: vi.fn(),
+    fetchPublicSettings: vi.fn(),
+    adminSettingsFetch: vi.fn(),
+    showError: vi.fn(),
+    showSuccess: vi.fn(),
+  };
+});
 
 const localeRef = vi.hoisted(() => ({ value: "zh-CN" }));
 
@@ -381,6 +390,7 @@ const baseSettingsResponse = {
   enable_anthropic_cache_ttl_1h_injection: false,
   rewrite_message_cache_control: false,
   antigravity_user_agent_version: "",
+  openai_images_responses_reasoning_effort: "medium",
   openai_codex_user_agent: "",
   payment_enabled: true,
   payment_min_amount: 1,
@@ -658,6 +668,26 @@ describe("admin SettingsView payment visible method controls", () => {
     expect(updateSettings).toHaveBeenCalledWith(
       expect.objectContaining({
         antigravity_user_agent_version: "1.23.2",
+      }),
+    );
+  });
+
+  it("submits OpenAI image bridge reasoning effort gateway setting", async () => {
+    getSettings.mockResolvedValueOnce({
+      ...baseSettingsResponse,
+      openai_images_responses_reasoning_effort: "xhigh",
+    });
+
+    const wrapper = mountView();
+
+    await flushPromises();
+    await wrapper.find("form").trigger("submit.prevent");
+    await flushPromises();
+
+    expect(updateSettings).toHaveBeenCalledTimes(1);
+    expect(updateSettings).toHaveBeenCalledWith(
+      expect.objectContaining({
+        openai_images_responses_reasoning_effort: "xhigh",
       }),
     );
   });

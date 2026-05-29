@@ -3919,6 +3919,38 @@
                 </p>
               </div>
 
+              <!-- OpenAI Images Responses reasoning.effort -->
+              <div>
+                <label
+                  class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
+                >
+                  {{
+                    t(
+                      "admin.settings.gatewayForwarding.openAIImagesResponsesReasoningEffort",
+                    )
+                  }}
+                </label>
+                <select
+                  v-model="form.openai_images_responses_reasoning_effort"
+                  class="input max-w-xs font-mono text-sm"
+                >
+                  <option
+                    v-for="effort in openAIImagesResponsesReasoningEffortOptions"
+                    :key="effort"
+                    :value="effort"
+                  >
+                    {{ effort }}
+                  </option>
+                </select>
+                <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                  {{
+                    t(
+                      "admin.settings.gatewayForwarding.openAIImagesResponsesReasoningEffortHint",
+                    )
+                  }}
+                </p>
+              </div>
+
               <!-- OpenAI Codex UA -->
               <div>
                 <label
@@ -6672,6 +6704,7 @@ import type {
   DefaultSubscriptionSetting,
   DefaultPlatformQuotasMap,
   OpenAIFastPolicyRule,
+  OpenAIImagesResponsesReasoningEffort,
   WeChatConnectMode,
   WebSearchEmulationConfig,
   WebSearchProviderConfig,
@@ -6753,6 +6786,9 @@ const settingsTabs = [
   { key: "email" as SettingsTab, icon: "mail" as const },
   { key: "backup" as SettingsTab, icon: "database" as const },
 ];
+
+const openAIImagesResponsesReasoningEffortOptions: OpenAIImagesResponsesReasoningEffort[] =
+  ["low", "medium", "high", "xhigh"];
 
 const settingsTabKeyboardActions = {
   ArrowLeft: -1,
@@ -7161,6 +7197,7 @@ const form = reactive<SettingsForm>({
   enable_anthropic_cache_ttl_1h_injection: false,
   rewrite_message_cache_control: false,
   antigravity_user_agent_version: "",
+  openai_images_responses_reasoning_effort: "medium",
   openai_codex_user_agent: "",
   // 余额、订阅到期与账号限额通知
   balance_low_notify_enabled: false,
@@ -8265,6 +8302,8 @@ async function saveSettings() {
       rewrite_message_cache_control: form.rewrite_message_cache_control,
       antigravity_user_agent_version:
         form.antigravity_user_agent_version?.trim() || "",
+      openai_images_responses_reasoning_effort:
+        form.openai_images_responses_reasoning_effort,
       openai_codex_user_agent:
         form.openai_codex_user_agent?.trim() || "",
       // Payment configuration

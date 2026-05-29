@@ -966,6 +966,40 @@ func (s *SettingService) GetAntigravityUserAgentVersion(ctx context.Context) str
 	return fallback
 }
 
+func (s *SettingService) defaultOpenAIImagesResponsesReasoningEffort() string {
+	if s != nil && s.cfg != nil {
+		return NormalizeOpenAIImagesResponsesReasoningEffort(s.cfg.Gateway.OpenAIImagesResponsesReasoningEffort)
+	}
+	return OpenAIImagesResponsesReasoningEffortDefault
+}
+
+// GetOpenAIImagesResponsesReasoningEffort returns the Responses API reasoning effort
+// used by the OAuth images bridge. DB setting wins; missing or invalid values fall
+// back to config/default so a corrupted setting cannot break image requests.
+func (s *SettingService) GetOpenAIImagesResponsesReasoningEffort(ctx context.Context) string {
+	fallback := s.defaultOpenAIImagesResponsesReasoningEffort()
+	if s == nil || s.settingRepo == nil {
+		return fallback
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	dbCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), gatewayForwardingDBTimeout)
+	defer cancel()
+	value, err := s.settingRepo.GetValue(dbCtx, SettingKeyOpenAIImagesResponsesReasoningEffort)
+	if err != nil {
+		if !errors.Is(err, ErrSettingNotFound) {
+			slog.Warn("failed to get openai images responses reasoning effort setting", "error", err)
+		}
+		return fallback
+	}
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" || !IsValidOpenAIImagesResponsesReasoningEffort(trimmed) {
+		return fallback
+	}
+	return NormalizeOpenAIImagesResponsesReasoningEffort(trimmed)
+}
+
 // GetOpenAICodexUserAgent 返回 OpenAI Codex 上游请求使用的 User-Agent。
 // 后台设置优先；为空时回退到内置默认值。
 func (s *SettingService) GetOpenAICodexUserAgent(ctx context.Context) string {
@@ -1815,6 +1849,18 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	updates[SettingKeyEnableAnthropicCacheTTL1hInjection] = strconv.FormatBool(settings.EnableAnthropicCacheTTL1hInjection)
 	updates[SettingKeyRewriteMessageCacheControl] = strconv.FormatBool(settings.RewriteMessageCacheControl)
 	updates[SettingKeyAntigravityUserAgentVersion] = antigravity.NormalizeUserAgentVersion(settings.AntigravityUserAgentVersion)
+	openAIImagesResponsesReasoningEffort := strings.TrimSpace(settings.OpenAIImagesResponsesReasoningEffort)
+	if openAIImagesResponsesReasoningEffort == "" {
+		openAIImagesResponsesReasoningEffort = s.defaultOpenAIImagesResponsesReasoningEffort()
+	}
+	if !IsValidOpenAIImagesResponsesReasoningEffort(openAIImagesResponsesReasoningEffort) {
+		return nil, infraerrors.BadRequest(
+			"INVALID_OPENAI_IMAGES_RESPONSES_REASONING_EFFORT",
+			"openai_images_responses_reasoning_effort must be one of: low, medium, high, xhigh",
+		)
+	}
+	settings.OpenAIImagesResponsesReasoningEffort = NormalizeOpenAIImagesResponsesReasoningEffort(openAIImagesResponsesReasoningEffort)
+	updates[SettingKeyOpenAIImagesResponsesReasoningEffort] = settings.OpenAIImagesResponsesReasoningEffort
 	updates[SettingKeyOpenAICodexUserAgent] = strings.TrimSpace(settings.OpenAICodexUserAgent)
 	updates[SettingPaymentVisibleMethodAlipaySource] = settings.PaymentVisibleMethodAlipaySource
 	updates[SettingPaymentVisibleMethodWxpaySource] = settings.PaymentVisibleMethodWxpaySource
@@ -2708,16 +2754,17 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		SettingKeyMaxClaudeCodeVersion: "",
 
 		// 分组隔离（默认不允许未分组 Key 调度）
-		SettingKeyAllowUngroupedKeyScheduling:        "false",
-		SettingKeyEnableAnthropicCacheTTL1hInjection: "false",
-		SettingKeyRewriteMessageCacheControl:         strconv.FormatBool(s.defaultRewriteMessageCacheControl()),
-		SettingKeyAntigravityUserAgentVersion:        "",
-		SettingKeyOpenAICodexUserAgent:               "",
-		SettingPaymentVisibleMethodAlipaySource:      "",
-		SettingPaymentVisibleMethodWxpaySource:       "",
-		SettingPaymentVisibleMethodAlipayEnabled:     "false",
-		SettingPaymentVisibleMethodWxpayEnabled:      "false",
-		openAIAdvancedSchedulerSettingKey:            "false",
+		SettingKeyAllowUngroupedKeyScheduling:          "false",
+		SettingKeyEnableAnthropicCacheTTL1hInjection:   "false",
+		SettingKeyRewriteMessageCacheControl:           strconv.FormatBool(s.defaultRewriteMessageCacheControl()),
+		SettingKeyAntigravityUserAgentVersion:          "",
+		SettingKeyOpenAIImagesResponsesReasoningEffort: s.defaultOpenAIImagesResponsesReasoningEffort(),
+		SettingKeyOpenAICodexUserAgent:                 "",
+		SettingPaymentVisibleMethodAlipaySource:        "",
+		SettingPaymentVisibleMethodWxpaySource:         "",
+		SettingPaymentVisibleMethodAlipayEnabled:       "false",
+		SettingPaymentVisibleMethodWxpayEnabled:        "false",
+		openAIAdvancedSchedulerSettingKey:              "false",
 	}
 
 	return s.settingRepo.SetMultiple(ctx, defaults)
@@ -3232,6 +3279,12 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 		result.RewriteMessageCacheControl = s.defaultRewriteMessageCacheControl()
 	}
 	result.AntigravityUserAgentVersion = antigravity.NormalizeUserAgentVersion(settings[SettingKeyAntigravityUserAgentVersion])
+	result.OpenAIImagesResponsesReasoningEffort = s.defaultOpenAIImagesResponsesReasoningEffort()
+	if v, ok := settings[SettingKeyOpenAIImagesResponsesReasoningEffort]; ok && strings.TrimSpace(v) != "" {
+		if IsValidOpenAIImagesResponsesReasoningEffort(v) {
+			result.OpenAIImagesResponsesReasoningEffort = NormalizeOpenAIImagesResponsesReasoningEffort(v)
+		}
+	}
 	result.OpenAICodexUserAgent = strings.TrimSpace(settings[SettingKeyOpenAICodexUserAgent])
 
 	// Web search emulation: quick enabled check from the JSON config
