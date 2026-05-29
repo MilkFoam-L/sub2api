@@ -96,6 +96,14 @@
       </button>
       <button
         type="button"
+        @click="showProbeModal = true"
+        class="inline-flex items-center gap-1.5 rounded-lg border border-emerald-200 px-3 py-1.5 text-sm text-emerald-700 hover:bg-emerald-50 dark:border-emerald-800 dark:text-emerald-400 dark:hover:bg-emerald-900/30"
+      >
+        <Icon name="beaker" size="sm" :stroke-width="2" />
+        {{ t('admin.accounts.modelProbe.openButton') }}
+      </button>
+      <button
+        type="button"
         @click="clearAll"
         class="rounded-lg border border-red-200 px-3 py-1.5 text-sm text-red-600 hover:bg-red-50 dark:border-red-800 dark:text-red-400 dark:hover:bg-red-900/30"
       >
@@ -125,6 +133,13 @@
         </button>
       </div>
     </div>
+
+    <ModelProbeModal
+      :show="showProbeModal"
+      :default-platform="primaryPlatform"
+      @close="showProbeModal = false"
+      @apply="applyProbedModels"
+    />
   </div>
 </template>
 
@@ -135,6 +150,7 @@ import { useAppStore } from '@/stores/app'
 import { accountsAPI } from '@/api/admin/accounts'
 import ModelIcon from '@/components/common/ModelIcon.vue'
 import Icon from '@/components/icons/Icon.vue'
+import ModelProbeModal from '@/components/account/ModelProbeModal.vue'
 import { allModels, getModelsByPlatform } from '@/composables/useModelWhitelist'
 
 const { t } = useI18n()
@@ -156,6 +172,8 @@ const showDropdown = ref(false)
 const searchQuery = ref('')
 const customModel = ref('')
 const isComposing = ref(false)
+const showProbeModal = ref(false)
+const probedModels = ref<string[]>([])
 const isSyncingUpstream = ref(false)
 const normalizedPlatforms = computed(() => {
   const rawPlatforms =
@@ -174,6 +192,8 @@ const normalizedPlatforms = computed(() => {
   )
 })
 
+const primaryPlatform = computed(() => normalizedPlatforms.value[0] || props.platform || 'openai')
+
 const upstreamSyncPlatforms = new Set(['anthropic', 'openai', 'gemini', 'antigravity'])
 const canSyncUpstream = computed(() => {
   if (!props.accountId) return false
@@ -182,8 +202,13 @@ const canSyncUpstream = computed(() => {
 })
 
 const availableOptions = computed(() => {
+  const optionMap = new Map(allModels.map(model => [model.value, model]))
+
   if (normalizedPlatforms.value.length === 0) {
-    return allModels
+    for (const model of probedModels.value) {
+      optionMap.set(model, { value: model, label: model })
+    }
+    return Array.from(optionMap.values())
   }
 
   const allowedModels = new Set<string>()
@@ -192,8 +217,14 @@ const availableOptions = computed(() => {
       allowedModels.add(model)
     }
   }
+  for (const model of probedModels.value) {
+    allowedModels.add(model)
+    if (!optionMap.has(model)) {
+      optionMap.set(model, { value: model, label: model })
+    }
+  }
 
-  return allModels.filter(model => allowedModels.has(model.value))
+  return Array.from(optionMap.values()).filter(model => allowedModels.has(model.value))
 })
 
 const filteredModels = computed(() => {
@@ -285,6 +316,32 @@ const syncUpstreamModels = async () => {
 
 const clearAll = () => {
   emit('update:modelValue', [])
+}
+
+const applyProbedModels = (models: string[]) => {
+  const nextModels = [...props.modelValue]
+  const nextProbedModels = [...probedModels.value]
+  let added = 0
+
+  for (const rawModel of models) {
+    const model = rawModel.trim()
+    if (!model) continue
+    if (!nextProbedModels.includes(model)) {
+      nextProbedModels.push(model)
+    }
+    if (!nextModels.includes(model)) {
+      nextModels.push(model)
+      added += 1
+    }
+  }
+
+  probedModels.value = nextProbedModels
+  emit('update:modelValue', nextModels)
+  if (added > 0) {
+    appStore.showSuccess(t('admin.accounts.modelProbe.addedModels', { count: added }))
+  } else {
+    appStore.showInfo(t('admin.accounts.modelExists'))
+  }
 }
 
 </script>
