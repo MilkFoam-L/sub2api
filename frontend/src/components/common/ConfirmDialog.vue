@@ -1,7 +1,7 @@
 <template>
   <BaseDialog :show="show" :title="title" width="narrow" @close="handleCancel">
     <div class="space-y-4">
-      <p class="text-sm text-gray-600 dark:text-gray-400">{{ message }}</p>
+      <p class="text-sm text-muted-foreground">{{ message }}</p>
       <slot></slot>
     </div>
 
@@ -10,7 +10,7 @@
         <button
           @click="handleCancel"
           type="button"
-          class="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 dark:border-dark-600 dark:bg-dark-700 dark:text-gray-200 dark:hover:bg-dark-600 dark:focus:ring-offset-dark-800"
+          class="rounded-md border border-input bg-background px-4 py-2 text-sm font-medium text-foreground hover:bg-accent hover:text-accent-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-background"
         >
           {{ cancelText }}
         </button>
@@ -18,10 +18,10 @@
           @click="handleConfirm"
           type="button"
           :class="[
-            'rounded-md px-4 py-2 text-sm font-medium text-white focus:outline-none focus:ring-2 focus:ring-offset-2 dark:focus:ring-offset-dark-800',
+            'rounded-md px-4 py-2 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-background',
             danger
-              ? 'bg-red-600 hover:bg-red-700 focus:ring-red-500'
-              : 'bg-primary-600 hover:bg-primary-700 focus:ring-primary-500'
+              ? 'bg-destructive text-destructive-foreground hover:bg-destructive/90'
+              : 'bg-primary text-primary-foreground hover:bg-primary/90'
           ]"
         >
           {{ confirmText }}

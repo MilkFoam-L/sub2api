@@ -9,11 +9,11 @@
     <!-- Logo/Brand -->
     <div class="sidebar-header" :class="{ 'sidebar-header-collapsed': sidebarCollapsed }">
       <!-- Custom Logo or Default Logo -->
-      <div class="sidebar-logo flex h-9 w-9 items-center justify-center overflow-hidden rounded-xl shadow-glow">
+      <div class="sidebar-logo flex h-9 w-9 items-center justify-center overflow-hidden rounded-md border border-border bg-background shadow-sm">
         <img v-if="settingsLoaded" :src="siteLogo || '/logo.png'" alt="Logo" class="h-full w-full object-contain" />
       </div>
       <div class="sidebar-brand" :class="{ 'sidebar-brand-collapsed': sidebarCollapsed }" :aria-hidden="sidebarCollapsed ? 'true' : 'false'">
-        <span class="sidebar-brand-title text-lg font-bold text-gray-900 dark:text-white">
+        <span class="sidebar-brand-title text-lg font-semibold text-foreground">
           {{ siteName }}
         </span>
         <!-- Version Badge -->
@@ -54,7 +54,7 @@
                 </span>
               </button>
               <!-- Children -->
-              <div v-if="!sidebarCollapsed && isGroupExpanded(item)" class="mb-1 ml-4 border-l border-gray-200 pl-2 dark:border-dark-600">
+              <div v-if="!sidebarCollapsed && isGroupExpanded(item)" class="mb-1 ml-4 border-l border-border pl-2">
                 <router-link
                   v-for="child in item.children"
                   :key="child.path"
@@ -140,7 +140,7 @@
     </nav>
 
     <!-- Bottom Section -->
-    <div class="mt-auto border-t border-gray-100 p-3 dark:border-dark-800">
+    <div class="mt-auto border-t border-border p-3">
       <!-- Theme Toggle -->
       <button
         @click="toggleTheme"
@@ -962,15 +962,12 @@ onMounted(() => {
   right: 0.75rem;
   top: 50%;
   height: 1px;
-  background: rgb(229 231 235);
+  background: hsl(var(--border));
   opacity: 0;
   transform: translateY(-50%);
   transition: opacity 0.18s ease;
 }
 
-.dark .sidebar-section-title::after {
-  background: rgb(55 65 81);
-}
 
 .sidebar-section-title-text-collapsed {
   opacity: 0;
