@@ -2982,6 +2982,8 @@ export default {
       dataImportHint: 'Upload the exported JSON file to import accounts and proxies.',
       dataImportWarning: 'Import will create new accounts/proxies; groups must be bound manually. Ensure existing data does not conflict.',
       dataImportFile: 'Data file',
+      dataImportFileHint: 'Supports selecting multiple JSON files (.json)',
+      dataImportSelectedFiles: '{count} JSON files selected',
       dataImportButton: 'Start Import',
       dataImporting: 'Importing...',
       dataImportSelectFile: 'Please select a data file',

@@ -3058,6 +3058,8 @@ export default {
       dataImportHint: '上传导出的 JSON 文件以批量导入账号与代理。',
       dataImportWarning: '导入将创建新账号与代理，分组需手工绑定；请确认已有数据不会冲突。',
       dataImportFile: '数据文件',
+      dataImportFileHint: '支持多选 JSON 文件（.json）',
+      dataImportSelectedFiles: '已选择 {count} 个 JSON 文件',
       dataImportButton: '开始导入',
       dataImporting: '导入中...',
       dataImportSelectFile: '请选择数据文件',
