@@ -497,6 +497,55 @@ func TestOpenAIGatewayService_OAuthPassthrough_CompactNonstreamKeepaliveWritesLe
 	require.Contains(t, string(body), `"id":"cmp_keepalive"`)
 }
 
+func TestOpenAIGatewayService_OAuthCompactNonPassthroughKeepaliveWritesLeadingNewline(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses/compact", bytes.NewReader(nil))
+	c.Request.Header.Set("User-Agent", "Codex Desktop/0.135.0-alpha.1")
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	originalBody := []byte(`{"model":"gpt-5.5","stream":false,"instructions":"local-test-instructions","input":[{"type":"message","role":"user","content":"compact me"}]}`)
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"application/json"}, "x-request-id": []string{"rid-compact-native-keepalive"}},
+		Body:       io.NopCloser(strings.NewReader(`{"id":"cmp_native_keepalive","usage":{"input_tokens":11,"output_tokens":22}}`)),
+	}
+	upstream := &httpUpstreamRecorder{resp: resp, delay: 1200 * time.Millisecond}
+
+	svc := &OpenAIGatewayService{
+		cfg: &config.Config{Gateway: config.GatewayConfig{
+			OpenAICompactNonstreamKeepaliveInterval: 1,
+		}},
+		httpUpstream: upstream,
+	}
+	account := &Account{
+		ID:          124,
+		Name:        "acc-native",
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeOAuth,
+		Concurrency: 1,
+		Credentials: map[string]any{
+			"access_token":       "oauth-token",
+			"chatgpt_account_id": "chatgpt-acc",
+		},
+		Status:         StatusActive,
+		Schedulable:    true,
+		RateMultiplier: f64p(1),
+	}
+
+	result, err := svc.Forward(context.Background(), c, account, originalBody)
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	body := rec.Body.Bytes()
+	require.True(t, bytes.HasPrefix(body, []byte("\n")), "native compact keepalive should write a leading blank line")
+	require.True(t, json.Valid(bytes.TrimSpace(body)))
+	require.Contains(t, string(body), `"id":"cmp_native_keepalive"`)
+	require.NotNil(t, upstream.lastReq)
+	require.Equal(t, chatgptCodexURL+"/compact", upstream.lastReq.URL.String())
+}
+
 func TestOpenAIGatewayService_OAuthPassthrough_CompactNonstreamKeepaliveDisabledHasNoLeadingWhitespace(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
