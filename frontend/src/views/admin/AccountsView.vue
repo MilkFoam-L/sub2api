@@ -447,6 +447,7 @@ type AccountBulkEditTarget =
         group?: string
         search?: string
         privacy_mode?: string
+        openai_plan_type?: string
         sort_by?: string
         sort_order?: AccountSortOrder
       }
@@ -539,6 +540,65 @@ const loadInitialAccountSortState = (): AccountSortState => {
   }
 }
 const sortState = reactive<AccountSortState>(loadInitialAccountSortState())
+
+const ACCOUNT_FILTER_STORAGE_KEY = 'account-table-filters'
+type AccountFilterState = {
+  platform: string
+  type: string
+  status: string
+  privacy_mode: string
+  group: string
+  search: string
+  openai_plan_type: string
+}
+const DEFAULT_ACCOUNT_FILTERS: AccountFilterState = {
+  platform: '',
+  type: '',
+  status: '',
+  privacy_mode: '',
+  group: '',
+  search: '',
+  openai_plan_type: ''
+}
+const ACCOUNT_FILTER_PLATFORMS = new Set(['', 'anthropic', 'openai', 'gemini', 'antigravity'])
+const ACCOUNT_FILTER_TYPES = new Set(['', 'oauth', 'setup-token', 'apikey', 'bedrock'])
+const ACCOUNT_FILTER_STATUSES = new Set(['', 'active', 'inactive', 'error', 'rate_limited', 'temp_unschedulable', 'unschedulable'])
+const ACCOUNT_FILTER_PRIVACY_MODES = new Set(['', '__unset__', 'training_off', 'training_set_cf_blocked', 'training_set_failed'])
+const OPENAI_PLAN_TYPES = new Set(['', 'team', 'plus', 'pro', 'free', 'abnormal'])
+
+const coerceFilterString = (value: unknown) => (typeof value === 'string' ? value : '')
+const sanitizeAccountFilters = (value: Partial<AccountFilterState> | null | undefined): AccountFilterState => {
+  const platform = ACCOUNT_FILTER_PLATFORMS.has(coerceFilterString(value?.platform)) ? coerceFilterString(value?.platform) : ''
+  const openAIPlanType = OPENAI_PLAN_TYPES.has(coerceFilterString(value?.openai_plan_type)) && platform === 'openai'
+    ? coerceFilterString(value?.openai_plan_type)
+    : ''
+  return {
+    platform,
+    type: ACCOUNT_FILTER_TYPES.has(coerceFilterString(value?.type)) ? coerceFilterString(value?.type) : '',
+    status: ACCOUNT_FILTER_STATUSES.has(coerceFilterString(value?.status)) ? coerceFilterString(value?.status) : '',
+    privacy_mode: ACCOUNT_FILTER_PRIVACY_MODES.has(coerceFilterString(value?.privacy_mode)) ? coerceFilterString(value?.privacy_mode) : '',
+    group: coerceFilterString(value?.group),
+    search: coerceFilterString(value?.search),
+    openai_plan_type: openAIPlanType
+  }
+}
+const loadInitialAccountFilters = (): AccountFilterState => {
+  try {
+    const raw = localStorage.getItem(ACCOUNT_FILTER_STORAGE_KEY)
+    if (!raw) return { ...DEFAULT_ACCOUNT_FILTERS }
+    return sanitizeAccountFilters(JSON.parse(raw) as Partial<AccountFilterState>)
+  } catch {
+    return { ...DEFAULT_ACCOUNT_FILTERS }
+  }
+}
+const persistAccountFilters = (filters: AccountFilterState) => {
+  try {
+    localStorage.setItem(ACCOUNT_FILTER_STORAGE_KEY, JSON.stringify(sanitizeAccountFilters(filters)))
+  } catch (e) {
+    console.error('Failed to save account filters:', e)
+  }
+}
+const initialAccountFilters = loadInitialAccountFilters()
 
 // Auto refresh settings
 const showAutoRefreshDropdown = ref(false)
@@ -733,16 +793,27 @@ const {
 } = useTableLoader<Account, any>({
   fetchFn: adminAPI.accounts.list,
   initialParams: {
-    platform: '',
-    type: '',
-    status: '',
-    privacy_mode: '',
-    group: '',
-    search: '',
+    ...initialAccountFilters,
     sort_by: sortState.sort_by,
     sort_order: sortState.sort_order
   }
 })
+
+watch(
+  () => sanitizeAccountFilters({
+    platform: params.platform,
+    type: params.type,
+    status: params.status,
+    privacy_mode: params.privacy_mode,
+    group: params.group,
+    search: params.search,
+    openai_plan_type: params.openai_plan_type
+  }),
+  (filters) => {
+    persistAccountFilters(filters)
+  },
+  { deep: true }
+)
 
 const {
   selectedIds: selIds,
@@ -941,6 +1012,7 @@ const refreshAccountsIncrementally = async () => {
         type?: string
         status?: string
         privacy_mode?: string
+        openai_plan_type?: string
         group?: string
         search?: string
         sort_by?: string
@@ -1359,6 +1431,7 @@ const buildBulkEditFilterSnapshot = () => {
     group: typeof rawParams.group === 'string' ? rawParams.group : '',
     search: typeof rawParams.search === 'string' ? rawParams.search : '',
     privacy_mode: typeof rawParams.privacy_mode === 'string' ? rawParams.privacy_mode : '',
+    openai_plan_type: typeof rawParams.openai_plan_type === 'string' && rawParams.platform === 'openai' ? rawParams.openai_plan_type : '',
     sort_by: typeof rawParams.sort_by === 'string' ? rawParams.sort_by : '',
     sort_order: sortOrder
   }
@@ -1409,6 +1482,7 @@ const buildAccountQueryFilters = () => ({
   status: params.status || '',
   group: params.group || '',
   privacy_mode: params.privacy_mode || '',
+  openai_plan_type: params.platform === 'openai' ? params.openai_plan_type || '' : '',
   search: params.search || '',
   sort_by: sortState.sort_by,
   sort_order: sortState.sort_order
@@ -1417,6 +1491,7 @@ const accountMatchesCurrentFilters = (account: Account) => {
   const filters = buildAccountQueryFilters()
   if (filters.platform && account.platform !== filters.platform) return false
   if (filters.type && account.type !== filters.type) return false
+  if (filters.openai_plan_type && account.platform === 'openai' && account.credentials?.plan_type !== filters.openai_plan_type) return false
   if (filters.status) {
     const now = Date.now()
     const rateLimitResetAt = account.rate_limit_reset_at ? new Date(account.rate_limit_reset_at).getTime() : Number.NaN

@@ -7007,7 +7007,7 @@ const form = reactive<SettingsForm>({
   default_user_rpm_limit: 0,
   site_name: "Sub2API",
   site_logo: "",
-  site_subtitle: "Subscription to API Conversion Platform",
+  site_subtitle: "通过统一域名与密钥接入全球大模型，并以风控策略沉淀可观测、可扩展、可治理的调用链路。",
   api_base_url: "",
   contact_info: "",
   doc_url: "",

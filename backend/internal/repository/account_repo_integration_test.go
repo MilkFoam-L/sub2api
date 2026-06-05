@@ -238,16 +238,17 @@ func (s *AccountRepoSuite) TestList() {
 
 func (s *AccountRepoSuite) TestListWithFilters() {
 	tests := []struct {
-		name        string
-		setup       func(client *dbent.Client)
-		platform    string
-		accType     string
-		status      string
-		search      string
-		groupID     int64
-		privacyMode string
-		wantCount   int
-		validate    func(accounts []service.Account)
+		name           string
+		setup          func(client *dbent.Client)
+		platform       string
+		accType        string
+		status         string
+		search         string
+		groupID        int64
+		privacyMode    string
+		openAIPlanType string
+		wantCount      int
+		validate       func(accounts []service.Account)
 	}{
 		{
 			name: "filter_by_platform",
@@ -420,6 +421,30 @@ func (s *AccountRepoSuite) TestListWithFilters() {
 			},
 		},
 		{
+			name: "filter_by_openai_plan_type",
+			setup: func(client *dbent.Client) {
+				mustCreateAccount(s.T(), client, &service.Account{Name: "openai-plus", Platform: service.PlatformOpenAI, Credentials: map[string]any{"plan_type": "plus"}})
+				mustCreateAccount(s.T(), client, &service.Account{Name: "openai-team", Platform: service.PlatformOpenAI, Credentials: map[string]any{"plan_type": "team"}})
+			},
+			platform:       service.PlatformOpenAI,
+			openAIPlanType: "plus",
+			wantCount:      1,
+			validate: func(accounts []service.Account) {
+				s.Require().Equal("openai-plus", accounts[0].Name)
+				s.Require().Equal("plus", accounts[0].Credentials["plan_type"])
+			},
+		},
+		{
+			name: "ignore_openai_plan_type_for_non_openai_platform",
+			setup: func(client *dbent.Client) {
+				mustCreateAccount(s.T(), client, &service.Account{Name: "anthropic-with-plan", Platform: service.PlatformAnthropic, Credentials: map[string]any{"plan_type": "plus"}})
+				mustCreateAccount(s.T(), client, &service.Account{Name: "anthropic-without-plan", Platform: service.PlatformAnthropic, Credentials: map[string]any{}})
+			},
+			platform:       service.PlatformAnthropic,
+			openAIPlanType: "plus",
+			wantCount:      2,
+		},
+		{
 			name: "filter_by_privacy_mode_unset",
 			setup: func(client *dbent.Client) {
 				mustCreateAccount(s.T(), client, &service.Account{Name: "privacy-unset", Extra: nil})
@@ -445,7 +470,7 @@ func (s *AccountRepoSuite) TestListWithFilters() {
 
 			tt.setup(client)
 
-			accounts, _, err := repo.ListWithFilters(ctx, pagination.PaginationParams{Page: 1, PageSize: 10}, tt.platform, tt.accType, tt.status, tt.search, tt.groupID, tt.privacyMode)
+			accounts, _, err := repo.ListWithFilters(ctx, pagination.PaginationParams{Page: 1, PageSize: 10}, tt.platform, tt.accType, tt.status, tt.search, tt.groupID, tt.privacyMode, tt.openAIPlanType)
 			s.Require().NoError(err)
 			s.Require().Len(accounts, tt.wantCount)
 			if tt.validate != nil {
@@ -512,7 +537,7 @@ func (s *AccountRepoSuite) TestPreload_And_VirtualFields() {
 	s.Require().Len(got.Groups, 1, "expected Groups to be populated")
 	s.Require().Equal(group.ID, got.Groups[0].ID)
 
-	accounts, page, err := s.repo.ListWithFilters(s.ctx, pagination.PaginationParams{Page: 1, PageSize: 10}, "", "", "", "acc", 0, "")
+	accounts, page, err := s.repo.ListWithFilters(s.ctx, pagination.PaginationParams{Page: 1, PageSize: 10}, "", "", "", "acc", 0, "", "")
 	s.Require().NoError(err, "ListWithFilters")
 	s.Require().Equal(int64(1), page.Total)
 	s.Require().Len(accounts, 1)
