@@ -360,6 +360,7 @@ export default {
     users: '用户管理',
     groups: '分组管理',
     channels: '渠道管理',
+    modelMarket: '模型广场',
     availableChannels: '可用渠道',
     subscriptions: '订阅管理',
     accounts: '账号管理',
@@ -1069,6 +1070,34 @@ export default {
       intervals: '阶梯定价',
       unitPerMillion: '/ 1M token',
       unitPerRequest: '/ 次'
+    }
+  },
+
+  modelMarket: {
+    title: '模型广场',
+    description: '按分组查看您可访问的渠道、模型与定价',
+    searchPlaceholder: '搜索模型、渠道或分组...',
+    empty: '暂无可用模型',
+    pricingConfigured: '已配置',
+    pricingVaries: '多渠道定价不同',
+    filters: {
+      allPlatforms: '全部平台',
+      allChannels: '全部渠道',
+      allPricing: '全部定价',
+      withPricing: '已配置定价',
+      withoutPricing: '未配置定价'
+    },
+    summary: {
+      groups: '{count} 个分组',
+      models: '{count} 个模型',
+      channels: '{count} 个渠道'
+    },
+    columns: {
+      group: '分组',
+      platform: '平台',
+      channels: '可用渠道',
+      models: '支持模型',
+      pricing: '定价'
     }
   },
 
@@ -3614,6 +3643,43 @@ export default {
       addModel: '填入',
       modelExists: '该模型已存在',
       modelCount: '{count} 个模型',
+      modelProbe: {
+        title: '模型探测',
+        openButton: '探测模型',
+        platform: '平台',
+        baseUrl: 'Base URL',
+        apiKey: 'API Key',
+        secretHint: '仅用于本次探测，不会保存到账号配置。',
+        discover: '发现模型',
+        discovering: '发现中...',
+        loadCandidates: '加载候选模型',
+        loadingCandidates: '加载候选中...',
+        testSelected: '验证选中',
+        testing: '验证中...',
+        selectAll: '全选',
+        clearSelected: '清空选择',
+        discoveredModels: '发现 {count} 个模型',
+        candidateModels: '{count} 个候选模型',
+        noModels: '还没有发现模型',
+        maxSelectionHint: '一次最多验证 {count} 个模型。',
+        mode: '验证方式',
+        modeResponses: 'OpenAI Responses',
+        modeChatCompletions: 'Chat Completions',
+        modeGemini: 'Gemini generateContent',
+        modeAnthropic: 'Anthropic Messages',
+        responsesHint: '使用 /v1/responses 发送最小 ping 请求。',
+        chatCompletionsHint: '使用 /v1/chat/completions 发送最小 ping 请求，适合旧兼容平台。',
+        geminiHint: '使用 generateContent 发送最小 ping 请求。',
+        anthropicHint: 'Anthropic 模型列表使用内置可信列表，验证时发送 Messages 最小请求。',
+        latestResults: '最近验证结果',
+        ok: '通过',
+        failed: '失败',
+        allFailed: '选中模型均未验证通过',
+        discoverFailed: '发现模型失败',
+        testFailed: '验证模型失败',
+        applyModels: '加入白名单（{count}）',
+        addedModels: '已加入 {count} 个模型'
+      },
       poolMode: '池模式',
       poolModeHint: '上游为账号池时启用，错误不标记本地账号状态',
       poolModeInfo:
@@ -5522,11 +5588,11 @@ export default {
           defaultIntervalHint: '新建渠道监控时表单的默认值，可被单个渠道覆盖。范围 15 – 3600 秒。',
         },
         availableChannels: {
-          title: '可用渠道',
-          description: '向已登录用户展示他们能访问的渠道、模型和定价聚合视图。默认关闭。',
+          title: '模型广场与可用渠道',
+          description: '向已登录用户展示其账号可访问的渠道、模型和定价聚合视图。默认关闭。',
           configureLink: '前往 渠道管理 > 渠道定价 配置模型价格',
-          enabled: '启用可用渠道',
-          enabledHint: '关闭后用户端侧边栏入口隐藏，接口返回空数组。',
+          enabled: '启用模型广场与可用渠道',
+          enabledHint: '关闭后用户端“模型广场”和“可用渠道”入口隐藏，接口返回空数组。',
         },
         riskControl: {
           title: '风控中心',
@@ -5809,6 +5875,8 @@ export default {
         antigravityUserAgentVersion: 'Antigravity UA 版本',
         antigravityUserAgentVersionPlaceholder: '1.23.2',
         antigravityUserAgentVersionHint: '留空时使用 ANTIGRAVITY_USER_AGENT_VERSION 或内置默认值 1.23.2；填写后后台设置优先。',
+        openAIImagesResponsesReasoningEffort: 'OpenAI 图片桥接推理强度',
+        openAIImagesResponsesReasoningEffortHint: '仅影响 OAuth 图片桥接走 Responses API 时写入 reasoning.effort 的值。可选 low、medium、high、xhigh；默认 medium。',
         openaiCodexUserAgent: 'OpenAI Codex UA',
         openaiCodexUserAgentPlaceholder: 'codex-tui/0.125.0 (Ubuntu 22.4.0; x86_64) xterm-256color (codex-tui; 0.125.0)',
         openaiCodexUserAgentHint: '用于规避 OpenAI 上游 Cloudflare 对浏览器 UA 的访问质询。仅在检测到客户端 User-Agent 为浏览器（Mozilla/...）时生效，其他客户端原样透传。留空使用内置默认值。',

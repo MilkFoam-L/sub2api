@@ -360,6 +360,7 @@ export default {
     users: 'Users',
     groups: 'Groups',
     channels: 'Channels',
+    modelMarket: 'Model Market',
     availableChannels: 'Available Channels',
     subscriptions: 'Subscriptions',
     accounts: 'Accounts',
@@ -1065,6 +1066,34 @@ export default {
       intervals: 'Tiered Pricing',
       unitPerMillion: '/ 1M tokens',
       unitPerRequest: '/ request'
+    }
+  },
+
+  modelMarket: {
+    title: 'Model Market',
+    description: 'Browse channels, models, and pricing by accessible group',
+    searchPlaceholder: 'Search models, channels, or groups...',
+    empty: 'No available models',
+    pricingConfigured: 'Configured',
+    pricingVaries: 'Pricing varies by channel',
+    filters: {
+      allPlatforms: 'All platforms',
+      allChannels: 'All channels',
+      allPricing: 'All pricing',
+      withPricing: 'Pricing configured',
+      withoutPricing: 'No pricing'
+    },
+    summary: {
+      groups: '{count} groups',
+      models: '{count} models',
+      channels: '{count} channels'
+    },
+    columns: {
+      group: 'Group',
+      platform: 'Platform',
+      channels: 'Channels',
+      models: 'Models',
+      pricing: 'Pricing'
     }
   },
 
@@ -3472,6 +3501,43 @@ export default {
       addModel: 'Add',
       modelExists: 'Model already exists',
       modelCount: '{count} models',
+      modelProbe: {
+        title: 'Model probe',
+        openButton: 'Probe models',
+        platform: 'Platform',
+        baseUrl: 'Base URL',
+        apiKey: 'API Key',
+        secretHint: 'Used only for this probe and not saved to the account.',
+        discover: 'Discover models',
+        discovering: 'Discovering...',
+        loadCandidates: 'Load candidate models',
+        loadingCandidates: 'Loading candidates...',
+        testSelected: 'Test selected',
+        testing: 'Testing...',
+        selectAll: 'Select all',
+        clearSelected: 'Clear selected',
+        discoveredModels: '{count} models found',
+        candidateModels: '{count} candidate models',
+        noModels: 'No models discovered yet',
+        maxSelectionHint: 'A single test supports up to {count} models.',
+        mode: 'Test mode',
+        modeResponses: 'OpenAI Responses',
+        modeChatCompletions: 'Chat Completions',
+        modeGemini: 'Gemini generateContent',
+        modeAnthropic: 'Anthropic Messages',
+        responsesHint: 'Send a minimal ping request to /v1/responses.',
+        chatCompletionsHint: 'Send a minimal ping request to /v1/chat/completions for older compatible providers.',
+        geminiHint: 'Send a minimal ping request through generateContent.',
+        anthropicHint: 'Anthropic discovery uses the trusted built-in list; tests use a minimal Messages request.',
+        latestResults: 'Latest results',
+        ok: 'OK',
+        failed: 'Failed',
+        allFailed: 'No selected model passed validation',
+        discoverFailed: 'Failed to discover models',
+        testFailed: 'Failed to test models',
+        applyModels: 'Add to whitelist ({count})',
+        addedModels: 'Added {count} model(s)'
+      },
       poolMode: 'Pool Mode',
       poolModeHint: 'Enable when upstream is an account pool; errors won\'t mark local account status',
       poolModeInfo:
@@ -5362,11 +5428,11 @@ export default {
           defaultIntervalHint: 'Pre-fills the interval when creating a new monitor; each monitor can override it. Range 15 – 3600.',
         },
         availableChannels: {
-          title: 'Available Channels',
-          description: 'Show logged-in users an aggregate view of the channels, models and pricing they can access. Disabled by default.',
+          title: 'Model Market and Available Channels',
+          description: 'Show logged-in users the channels, models, and pricing available to their account. Disabled by default.',
           configureLink: 'Configure model pricing in Channel Management > Channel Pricing',
-          enabled: 'Enable Available Channels',
-          enabledHint: 'When off, the sidebar entry is hidden and the endpoint returns an empty list.',
+          enabled: 'Enable Model Market and Available Channels',
+          enabledHint: 'When off, the user sidebar entries for Model Market and Available Channels are hidden and the endpoint returns an empty list.',
         },
         riskControl: {
           title: 'Risk Control',
@@ -5655,6 +5721,8 @@ export default {
         antigravityUserAgentVersion: 'Antigravity UA Version',
         antigravityUserAgentVersionPlaceholder: '1.23.2',
         antigravityUserAgentVersionHint: 'Leave empty to use ANTIGRAVITY_USER_AGENT_VERSION or the built-in default 1.23.2; when set, the admin setting takes precedence.',
+        openAIImagesResponsesReasoningEffort: 'OpenAI Image Bridge Reasoning Effort',
+        openAIImagesResponsesReasoningEffortHint: 'Only affects the reasoning.effort value used when the OAuth image bridge calls the Responses API. Options: low, medium, high, xhigh. Default: medium.',
         openaiCodexUserAgent: 'OpenAI Codex UA',
         openaiCodexUserAgentPlaceholder: 'codex-tui/0.125.0 (Ubuntu 22.4.0; x86_64) xterm-256color (codex-tui; 0.125.0)',
         openaiCodexUserAgentHint: 'Used to bypass Cloudflare browser-UA challenges on the OpenAI upstream. Only applies when the client User-Agent is detected as a browser (Mozilla/...). Leave empty to use the built-in default.',

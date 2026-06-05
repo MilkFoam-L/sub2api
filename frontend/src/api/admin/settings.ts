@@ -355,6 +355,12 @@ export function deriveWeChatConnectStoredMode(
 /**
  * System settings interface
  */
+export type OpenAIImagesResponsesReasoningEffort =
+  | "low"
+  | "medium"
+  | "high"
+  | "xhigh";
+
 export interface SystemSettings {
   // Registration settings
   registration_enabled: boolean;
@@ -559,6 +565,7 @@ export interface SystemSettings {
   enable_anthropic_cache_ttl_1h_injection: boolean;
   rewrite_message_cache_control: boolean;
   antigravity_user_agent_version: string;
+  openai_images_responses_reasoning_effort: OpenAIImagesResponsesReasoningEffort;
   openai_codex_user_agent: string;
   openai_allow_claude_code_codex_plugin: boolean;
   web_search_emulation_enabled?: boolean;
@@ -795,6 +802,7 @@ export interface UpdateSettingsRequest {
   enable_anthropic_cache_ttl_1h_injection?: boolean;
   rewrite_message_cache_control?: boolean;
   antigravity_user_agent_version?: string;
+  openai_images_responses_reasoning_effort?: OpenAIImagesResponsesReasoningEffort;
   openai_codex_user_agent?: string;
   openai_allow_claude_code_codex_plugin?: boolean;
   // Payment configuration

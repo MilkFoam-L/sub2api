@@ -255,6 +255,7 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		EnableAnthropicCacheTTL1hInjection:     settings.EnableAnthropicCacheTTL1hInjection,
 		RewriteMessageCacheControl:             settings.RewriteMessageCacheControl,
 		AntigravityUserAgentVersion:            settings.AntigravityUserAgentVersion,
+		OpenAIImagesResponsesReasoningEffort:   settings.OpenAIImagesResponsesReasoningEffort,
 		OpenAICodexUserAgent:                   settings.OpenAICodexUserAgent,
 		OpenAIAllowClaudeCodeCodexPlugin:       settings.OpenAIAllowClaudeCodeCodexPlugin,
 		WebSearchEmulationEnabled:              settings.WebSearchEmulationEnabled,
@@ -580,14 +581,15 @@ type UpdateSettingsRequest struct {
 	BackendModeEnabled bool `json:"backend_mode_enabled"`
 
 	// Gateway forwarding behavior
-	EnableFingerprintUnification       *bool   `json:"enable_fingerprint_unification"`
-	EnableMetadataPassthrough          *bool   `json:"enable_metadata_passthrough"`
-	EnableCCHSigning                   *bool   `json:"enable_cch_signing"`
-	EnableAnthropicCacheTTL1hInjection *bool   `json:"enable_anthropic_cache_ttl_1h_injection"`
-	RewriteMessageCacheControl         *bool   `json:"rewrite_message_cache_control"`
-	AntigravityUserAgentVersion        *string `json:"antigravity_user_agent_version"`
-	OpenAICodexUserAgent               *string `json:"openai_codex_user_agent"`
-	OpenAIAllowClaudeCodeCodexPlugin   *bool   `json:"openai_allow_claude_code_codex_plugin"`
+	EnableFingerprintUnification         *bool   `json:"enable_fingerprint_unification"`
+	EnableMetadataPassthrough            *bool   `json:"enable_metadata_passthrough"`
+	EnableCCHSigning                     *bool   `json:"enable_cch_signing"`
+	EnableAnthropicCacheTTL1hInjection   *bool   `json:"enable_anthropic_cache_ttl_1h_injection"`
+	RewriteMessageCacheControl           *bool   `json:"rewrite_message_cache_control"`
+	AntigravityUserAgentVersion          *string `json:"antigravity_user_agent_version"`
+	OpenAIImagesResponsesReasoningEffort *string `json:"openai_images_responses_reasoning_effort"`
+	OpenAICodexUserAgent                 *string `json:"openai_codex_user_agent"`
+	OpenAIAllowClaudeCodeCodexPlugin     *bool   `json:"openai_allow_claude_code_codex_plugin"`
 
 	// Payment visible method routing
 	PaymentVisibleMethodAlipaySource  *string `json:"payment_visible_method_alipay_source"`
@@ -1451,6 +1453,14 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			return
 		}
 	}
+	if req.OpenAIImagesResponsesReasoningEffort != nil {
+		normalized := strings.ToLower(strings.TrimSpace(*req.OpenAIImagesResponsesReasoningEffort))
+		req.OpenAIImagesResponsesReasoningEffort = &normalized
+		if normalized != "" && !service.IsValidOpenAIImagesResponsesReasoningEffort(normalized) {
+			response.Error(c, http.StatusBadRequest, "openai_images_responses_reasoning_effort must be one of: low, medium, high, xhigh")
+			return
+		}
+	}
 	if req.OpenAICodexUserAgent != nil {
 		normalized := strings.TrimSpace(*req.OpenAICodexUserAgent)
 		req.OpenAICodexUserAgent = &normalized
@@ -1667,6 +1677,12 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 				return *req.AntigravityUserAgentVersion
 			}
 			return previousSettings.AntigravityUserAgentVersion
+		}(),
+		OpenAIImagesResponsesReasoningEffort: func() string {
+			if req.OpenAIImagesResponsesReasoningEffort != nil {
+				return *req.OpenAIImagesResponsesReasoningEffort
+			}
+			return previousSettings.OpenAIImagesResponsesReasoningEffort
 		}(),
 		OpenAICodexUserAgent: func() string {
 			if req.OpenAICodexUserAgent != nil {
@@ -2055,6 +2071,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		EnableAnthropicCacheTTL1hInjection:     updatedSettings.EnableAnthropicCacheTTL1hInjection,
 		RewriteMessageCacheControl:             updatedSettings.RewriteMessageCacheControl,
 		AntigravityUserAgentVersion:            updatedSettings.AntigravityUserAgentVersion,
+		OpenAIImagesResponsesReasoningEffort:   updatedSettings.OpenAIImagesResponsesReasoningEffort,
 		OpenAICodexUserAgent:                   updatedSettings.OpenAICodexUserAgent,
 		OpenAIAllowClaudeCodeCodexPlugin:       updatedSettings.OpenAIAllowClaudeCodeCodexPlugin,
 		PaymentVisibleMethodAlipaySource:       updatedSettings.PaymentVisibleMethodAlipaySource,
@@ -2523,6 +2540,9 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	}
 	if before.AntigravityUserAgentVersion != after.AntigravityUserAgentVersion {
 		changed = append(changed, "antigravity_user_agent_version")
+	}
+	if before.OpenAIImagesResponsesReasoningEffort != after.OpenAIImagesResponsesReasoningEffort {
+		changed = append(changed, "openai_images_responses_reasoning_effort")
 	}
 	if before.OpenAICodexUserAgent != after.OpenAICodexUserAgent {
 		changed = append(changed, "openai_codex_user_agent")

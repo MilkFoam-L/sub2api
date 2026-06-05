@@ -10,6 +10,7 @@ import { useAdminSettingsStore } from '@/stores/adminSettings'
 import { useNavigationLoadingState } from '@/composables/useNavigationLoading'
 import { useRoutePrefetch } from '@/composables/useRoutePrefetch'
 import { getSetupStatus } from '@/api/setup'
+import { FeatureFlags, isFeatureFlagEnabled } from '@/utils/featureFlags'
 import { resolveCompletedSetupRedirectPath } from './setupRedirect'
 import { resolveDocumentTitle } from './title'
 
@@ -247,9 +248,23 @@ const routes: RouteRecordRaw[] = [
     meta: {
       requiresAuth: true,
       requiresAdmin: false,
+      requiresAvailableChannels: true,
       title: 'Available Channels',
       titleKey: 'availableChannels.title',
       descriptionKey: 'availableChannels.description'
+    }
+  },
+  {
+    path: '/models',
+    name: 'ModelMarket',
+    component: () => import('@/views/user/ModelMarketView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: false,
+      requiresAvailableChannels: true,
+      title: 'Model Market',
+      titleKey: 'modelMarket.title',
+      descriptionKey: 'modelMarket.description'
     }
   },
   {
@@ -825,12 +840,24 @@ router.beforeEach(async (to, _from, next) => {
     }
   }
 
+  if (to.meta.requiresAvailableChannels) {
+    if (!appStore.cachedPublicSettings) {
+      await appStore.fetchPublicSettings()
+    }
+    if (appStore.cachedPublicSettings && !isFeatureFlagEnabled(FeatureFlags.availableChannels)) {
+      next(authStore.isAdmin ? '/admin/settings' : '/dashboard')
+      return
+    }
+  }
+
   // 简易模式下限制访问某些页面
   if (authStore.isSimpleMode) {
     const restrictedPaths = [
       '/admin/groups',
       '/admin/subscriptions',
       '/admin/redeem',
+      '/models',
+      '/available-channels',
       '/subscriptions',
       '/redeem'
     ]

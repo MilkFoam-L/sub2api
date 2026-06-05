@@ -489,6 +489,10 @@ func ProvideAPIKeyService(
 	return svc
 }
 
+func ProvideAvailableChannelAccountModelRepository(accountRepo AccountRepository) AvailableChannelAccountModelRepository {
+	return accountRepo
+}
+
 // ProviderSet is the Wire provider set for all services
 var ProviderSet = wire.NewSet(
 	// Core services
@@ -571,6 +575,7 @@ var ProviderSet = wire.NewSet(
 	ProvideScheduledTestService,
 	ProvideScheduledTestRunnerService,
 	NewGroupCapacityService,
+	ProvideAvailableChannelAccountModelRepository,
 	NewChannelService,
 	NewModelPricingResolver,
 	NewContentModerationService,
