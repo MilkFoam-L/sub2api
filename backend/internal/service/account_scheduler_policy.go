@@ -68,6 +68,9 @@ func schedulerAccountCost(item accountWithLoad, selectionDebt int, cfg config.Ga
 	if item.loadInfo != nil {
 		load += float64(item.loadInfo.CurrentConcurrency)
 		load += float64(item.loadInfo.WaitingCount) * cfg.WaitPenalty
+		if load == 0 && item.loadInfo.LoadRate > 0 {
+			load = schedulerAccountCapacity(item.account) * float64(item.loadInfo.LoadRate) / 100
+		}
 	}
 	if selectionDebt > 0 && cfg.SelectionDebtWeight > 0 {
 		load += float64(selectionDebt) * cfg.SelectionDebtWeight

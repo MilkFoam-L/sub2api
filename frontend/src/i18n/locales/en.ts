@@ -3133,6 +3133,7 @@ export default {
         overloaded: 'Overloaded',
         tempUnschedulable: 'Temp Unschedulable',
         quotaExceeded: 'Quota Exceeded',
+        upstreamNoBalance: 'Upstream No Balance',
         unschedulable: 'Unschedulable',
         rateLimitedUntil: 'Rate limited and removed from scheduling. Auto resumes at {time}',
         rateLimitedAutoResume: 'Auto resumes in {time}',

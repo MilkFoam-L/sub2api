@@ -288,6 +288,11 @@ const hasError = computed(() => {
   return props.account.status === 'error'
 })
 
+const hasUpstreamNoBalance = computed(() => {
+  if (!hasError.value || !props.account.error_message) return false
+  return /INSUFFICIENT_BALANCE|Upstream no balance/i.test(props.account.error_message)
+})
+
 const isQuotaExceeded = computed(() => {
   const exceeded = (used?: number | null, limit?: number | null) =>
     typeof limit === 'number' && limit > 0 && typeof used === 'number' && used >= limit
@@ -335,6 +340,9 @@ const statusClass = computed(() => {
 
 // Computed: status text
 const statusText = computed(() => {
+  if (hasUpstreamNoBalance.value) {
+    return t('admin.accounts.status.upstreamNoBalance')
+  }
   if (hasError.value) {
     return t('admin.accounts.status.error')
   }

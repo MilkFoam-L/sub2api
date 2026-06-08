@@ -86,3 +86,33 @@ func TestRateLimitService_HandleUpstreamError_OpenAI403ThresholdDisables(t *test
 	require.Contains(t, repo.lastErrorMsg, "workspace forbidden by policy")
 	require.Contains(t, repo.lastErrorMsg, "consecutive_403=3/3")
 }
+
+func TestRateLimitService_HandleUpstreamError_OpenAIInsufficientBalanceDisablesPoolModeAccount(t *testing.T) {
+	repo := &rateLimitAccountRepoStub{}
+	service := NewRateLimitService(repo, nil, &config.Config{}, nil, nil)
+	account := &Account{
+		ID:       303,
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeAPIKey,
+		Status:   StatusActive,
+		Credentials: map[string]any{
+			"pool_mode": true,
+		},
+		Schedulable: true,
+	}
+
+	shouldDisable := service.HandleUpstreamError(
+		context.Background(),
+		account,
+		http.StatusForbidden,
+		http.Header{},
+		[]byte(`{"code":"INSUFFICIENT_BALANCE","message":"Insufficient account balance"}`),
+	)
+
+	require.True(t, shouldDisable)
+	require.Equal(t, 1, repo.setErrorCalls)
+	require.Equal(t, 0, repo.tempCalls)
+	require.Contains(t, repo.lastErrorMsg, "Upstream no balance")
+	require.Contains(t, repo.lastErrorMsg, "INSUFFICIENT_BALANCE")
+	require.Contains(t, repo.lastErrorMsg, "Insufficient account balance")
+}

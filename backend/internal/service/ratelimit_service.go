@@ -164,6 +164,11 @@ func (s *RateLimitService) CheckErrorPolicy(ctx context.Context, account *Accoun
 func (s *RateLimitService) HandleUpstreamError(ctx context.Context, account *Account, statusCode int, headers http.Header, responseBody []byte, requestedModel ...string) (shouldDisable bool) {
 	customErrorCodesEnabled := account.IsCustomErrorCodesEnabled()
 
+	if isUpstreamInsufficientBalanceError(responseBody) {
+		s.handleUpstreamInsufficientBalance(ctx, account, statusCode, responseBody)
+		return true
+	}
+
 	// 池模式默认不标记本地账号状态；仅当用户显式配置自定义错误码时按本地策略处理。
 	if account.IsPoolMode() && !customErrorCodesEnabled {
 		slog.Info("pool_mode_error_skipped", "account_id", account.ID, "status_code", statusCode)
@@ -719,6 +724,22 @@ func (s *RateLimitService) handleAuthError(ctx context.Context, account *Account
 		return
 	}
 	slog.Warn("account_disabled_auth_error", "account_id", account.ID, "error", errorMsg)
+}
+
+func (s *RateLimitService) handleUpstreamInsufficientBalance(ctx context.Context, account *Account, statusCode int, responseBody []byte) {
+	msg := "Upstream no balance (INSUFFICIENT_BALANCE): upstream account balance is insufficient"
+	if upstreamMsg := strings.TrimSpace(sanitizeUpstreamErrorMessage(extractUpstreamErrorMessage(responseBody))); upstreamMsg != "" {
+		msg = "Upstream no balance (INSUFFICIENT_BALANCE): " + truncateForLog([]byte(upstreamMsg), 512)
+	}
+	if statusCode > 0 {
+		msg = fmt.Sprintf("%s | status=%d", msg, statusCode)
+	}
+	s.notifyAccountSchedulingBlocked(account, time.Time{}, "upstream_insufficient_balance")
+	if err := s.accountRepo.SetError(ctx, account.ID, msg); err != nil {
+		slog.Warn("account_set_upstream_insufficient_balance_failed", "account_id", account.ID, "status_code", statusCode, "error", err)
+		return
+	}
+	slog.Warn("account_disabled_upstream_insufficient_balance", "account_id", account.ID, "status_code", statusCode, "error", msg)
 }
 
 func buildForbiddenErrorMessage(prefix string, upstreamMsg string, responseBody []byte, fallback string) string {

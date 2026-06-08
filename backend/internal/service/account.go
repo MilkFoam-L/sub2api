@@ -987,6 +987,16 @@ func (a *Account) IsPoolModeRetryableStatus(statusCode int) bool {
 	return false
 }
 
+func shouldRetryPoolModeOnSameAccount(account *Account, statusCode int, responseBody []byte) bool {
+	if account == nil || !account.IsPoolMode() || !account.IsPoolModeRetryableStatus(statusCode) {
+		return false
+	}
+	if isUpstreamInsufficientBalanceError(responseBody) {
+		return false
+	}
+	return true
+}
+
 func (a *Account) GetCustomErrorCodes() []int {
 	if a.Credentials == nil {
 		return nil

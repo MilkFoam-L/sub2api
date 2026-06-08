@@ -63,6 +63,19 @@ func TestSchedulerPolicyCostUsesLoadFactorAsCapacityWeight(t *testing.T) {
 	require.Greater(t, lowCost, highCost, "同样并发下，更高 UI 负载因子应该代表更大容量、更低调度成本")
 }
 
+func TestSchedulerPolicyCostFallsBackToLoadRate(t *testing.T) {
+	cfg := testWeightedP2CConfig()
+	highLoad := makeWeightedPolicyAccount(1, 0, 1, 5, 0, 0)
+	lowLoad := makeWeightedPolicyAccount(2, 0, 1, 5, 0, 0)
+	highLoad.loadInfo.LoadRate = 80
+	lowLoad.loadInfo.LoadRate = 20
+
+	highCost := schedulerAccountCost(highLoad, 0, cfg)
+	lowCost := schedulerAccountCost(lowLoad, 0, cfg)
+
+	require.Greater(t, highCost, lowCost, "批量负载只返回 LoadRate 时也应优先低负载账号")
+}
+
 func TestSchedulerPolicySelectionDebtPenalizesRecentlySelectedAccount(t *testing.T) {
 	cfg := testWeightedP2CConfig()
 	accounts := []accountWithLoad{

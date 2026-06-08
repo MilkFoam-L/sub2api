@@ -159,4 +159,28 @@ describe('AccountStatusIndicator', () => {
     // AICredits 积分耗尽状态应显示
     expect(wrapper.text()).toContain('admin.accounts.status.creditsExhausted')
   })
+
+  it('上游余额不足错误态显示专用状态，不再显示普通错误', () => {
+    const wrapper = mount(AccountStatusIndicator, {
+      props: {
+        account: makeAccount({
+          id: 5,
+          name: 'openai-5',
+          platform: 'openai',
+          type: 'apikey',
+          status: 'error',
+          schedulable: false,
+          error_message: 'Upstream no balance (INSUFFICIENT_BALANCE): Insufficient account balance'
+        })
+      },
+      global: {
+        stubs: {
+          Icon: true
+        }
+      }
+    })
+
+    expect(wrapper.text()).toContain('admin.accounts.status.upstreamNoBalance')
+    expect(wrapper.text()).not.toContain('admin.accounts.status.error')
+  })
 })

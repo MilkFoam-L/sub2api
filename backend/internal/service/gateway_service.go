@@ -1985,10 +1985,12 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 							stickyItems = append(stickyItems, accountWithLoad{account: candidate, loadInfo: &AccountLoadInfo{AccountID: candidate.ID}})
 							loadReq = append(loadReq, AccountWithConcurrency{ID: candidate.ID, MaxConcurrency: candidate.EffectiveLoadFactor()})
 						}
-						if loadMap, loadErr := s.concurrencyService.GetAccountsLoadBatch(ctx, loadReq); loadErr == nil {
-							for i := range stickyItems {
-								if loadInfo := loadMap[stickyItems[i].account.ID]; loadInfo != nil {
-									stickyItems[i].loadInfo = loadInfo
+						if len(stickyItems) > 1 {
+							if loadMap, loadErr := s.concurrencyService.GetAccountsLoadBatch(ctx, loadReq); loadErr == nil {
+								for i := range stickyItems {
+									if loadInfo := loadMap[stickyItems[i].account.ID]; loadInfo != nil {
+										stickyItems[i].loadInfo = loadInfo
+									}
 								}
 							}
 						}
@@ -5055,7 +5057,7 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 			return nil, &UpstreamFailoverError{
 				StatusCode:             resp.StatusCode,
 				ResponseBody:           respBody,
-				RetryableOnSameAccount: account.IsPoolMode() && account.IsPoolModeRetryableStatus(resp.StatusCode),
+				RetryableOnSameAccount: shouldRetryPoolModeOnSameAccount(account, resp.StatusCode, respBody),
 			}
 		}
 		return s.handleRetryExhaustedError(ctx, resp, c, account)
@@ -5089,7 +5091,7 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 		return nil, &UpstreamFailoverError{
 			StatusCode:             resp.StatusCode,
 			ResponseBody:           respBody,
-			RetryableOnSameAccount: account.IsPoolMode() && account.IsPoolModeRetryableStatus(resp.StatusCode),
+			RetryableOnSameAccount: shouldRetryPoolModeOnSameAccount(account, resp.StatusCode, respBody),
 		}
 	}
 	if resp.StatusCode >= 400 {
@@ -5378,7 +5380,7 @@ func (s *GatewayService) forwardAnthropicAPIKeyPassthroughWithInput(
 			return nil, &UpstreamFailoverError{
 				StatusCode:             resp.StatusCode,
 				ResponseBody:           respBody,
-				RetryableOnSameAccount: account.IsPoolMode() && account.IsPoolModeRetryableStatus(resp.StatusCode),
+				RetryableOnSameAccount: shouldRetryPoolModeOnSameAccount(account, resp.StatusCode, respBody),
 			}
 		}
 		return s.handleRetryExhaustedError(ctx, resp, c, account)
@@ -5412,7 +5414,7 @@ func (s *GatewayService) forwardAnthropicAPIKeyPassthroughWithInput(
 		return nil, &UpstreamFailoverError{
 			StatusCode:             resp.StatusCode,
 			ResponseBody:           respBody,
-			RetryableOnSameAccount: account.IsPoolMode() && account.IsPoolModeRetryableStatus(resp.StatusCode),
+			RetryableOnSameAccount: shouldRetryPoolModeOnSameAccount(account, resp.StatusCode, respBody),
 		}
 	}
 
@@ -6167,7 +6169,7 @@ func (s *GatewayService) handleBedrockUpstreamErrors(
 			return nil, &UpstreamFailoverError{
 				StatusCode:             resp.StatusCode,
 				ResponseBody:           respBody,
-				RetryableOnSameAccount: account.IsPoolMode() && account.IsPoolModeRetryableStatus(resp.StatusCode),
+				RetryableOnSameAccount: shouldRetryPoolModeOnSameAccount(account, resp.StatusCode, respBody),
 			}
 		}
 		return s.handleRetryExhaustedError(ctx, resp, c, account)
@@ -6191,7 +6193,7 @@ func (s *GatewayService) handleBedrockUpstreamErrors(
 		return nil, &UpstreamFailoverError{
 			StatusCode:             resp.StatusCode,
 			ResponseBody:           respBody,
-			RetryableOnSameAccount: account.IsPoolMode() && account.IsPoolModeRetryableStatus(resp.StatusCode),
+			RetryableOnSameAccount: shouldRetryPoolModeOnSameAccount(account, resp.StatusCode, respBody),
 		}
 	}
 
@@ -7285,6 +7287,12 @@ func extractUpstreamErrorCode(body []byte) string {
 	if code := strings.TrimSpace(gjson.GetBytes(body, "error.code").String()); code != "" {
 		return code
 	}
+	if code := strings.TrimSpace(gjson.GetBytes(body, "code").String()); code != "" {
+		return code
+	}
+	if code := strings.TrimSpace(gjson.GetBytes(body, "detail.code").String()); code != "" {
+		return code
+	}
 
 	inner := strings.TrimSpace(gjson.GetBytes(body, "error.message").String())
 	if !strings.HasPrefix(inner, "{") {
@@ -7294,14 +7302,31 @@ func extractUpstreamErrorCode(body []byte) string {
 	if code := strings.TrimSpace(gjson.Get(inner, "error.code").String()); code != "" {
 		return code
 	}
+	if code := strings.TrimSpace(gjson.Get(inner, "code").String()); code != "" {
+		return code
+	}
+	if code := strings.TrimSpace(gjson.Get(inner, "detail.code").String()); code != "" {
+		return code
+	}
 
 	if lastBrace := strings.LastIndex(inner, "}"); lastBrace >= 0 {
-		if code := strings.TrimSpace(gjson.Get(inner[:lastBrace+1], "error.code").String()); code != "" {
+		inner = inner[:lastBrace+1]
+		if code := strings.TrimSpace(gjson.Get(inner, "error.code").String()); code != "" {
+			return code
+		}
+		if code := strings.TrimSpace(gjson.Get(inner, "code").String()); code != "" {
+			return code
+		}
+		if code := strings.TrimSpace(gjson.Get(inner, "detail.code").String()); code != "" {
 			return code
 		}
 	}
 
 	return ""
+}
+
+func isUpstreamInsufficientBalanceError(body []byte) bool {
+	return strings.EqualFold(strings.TrimSpace(extractUpstreamErrorCode(body)), "INSUFFICIENT_BALANCE")
 }
 
 func isCountTokensUnsupported404(statusCode int, body []byte) bool {

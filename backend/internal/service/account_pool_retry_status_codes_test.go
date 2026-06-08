@@ -191,3 +191,16 @@ func TestIsPoolModeRetryableStatus_Account(t *testing.T) {
 		})
 	}
 }
+
+func TestShouldRetryPoolModeOnSameAccount_SkipsInsufficientBalance(t *testing.T) {
+	account := &Account{
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeAPIKey,
+		Credentials: map[string]any{
+			"pool_mode": true,
+		},
+	}
+	body := []byte(`{"code":"INSUFFICIENT_BALANCE","message":"Insufficient account balance"}`)
+
+	require.False(t, shouldRetryPoolModeOnSameAccount(account, 403, body))
+}

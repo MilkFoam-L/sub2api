@@ -280,7 +280,7 @@ func (s *OpenAIGatewayService) ForwardAsChatCompletions(
 			return nil, &UpstreamFailoverError{
 				StatusCode:             resp.StatusCode,
 				ResponseBody:           respBody,
-				RetryableOnSameAccount: account.IsPoolMode() && (account.IsPoolModeRetryableStatus(resp.StatusCode) || isOpenAITransientProcessingError(resp.StatusCode, upstreamMsg, respBody)),
+				RetryableOnSameAccount: shouldRetryPoolModeOnSameAccount(account, resp.StatusCode, respBody) || (account.IsPoolMode() && isOpenAITransientProcessingError(resp.StatusCode, upstreamMsg, respBody)),
 			}
 		}
 		return s.handleChatCompletionsErrorResponse(resp, c, account, billingModel)
