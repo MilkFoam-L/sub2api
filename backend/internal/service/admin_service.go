@@ -82,6 +82,7 @@ type AdminService interface {
 	// 用于刷新流程持久化 account_uuid / org_uuid 等少量键，避免被全量快照覆盖。
 	UpdateAccountExtra(ctx context.Context, id int64, updates map[string]any) error
 	DeleteAccount(ctx context.Context, id int64) error
+	BulkDeleteAccounts(ctx context.Context, input *BulkDeleteAccountsInput) (*BulkDeleteAccountsResult, error)
 	RefreshAccountCredentials(ctx context.Context, id int64) (*Account, error)
 	ClearAccountError(ctx context.Context, id int64) (*Account, error)
 	SetAccountError(ctx context.Context, id int64, errorMsg string) error
@@ -341,6 +342,11 @@ type BulkUpdateAccountFilters struct {
 	PrivacyMode string
 }
 
+type BulkDeleteAccountsInput struct {
+	AccountIDs []int64
+	Filters    *BulkUpdateAccountFilters
+}
+
 // BulkUpdateAccountResult captures the result for a single account update.
 type BulkUpdateAccountResult struct {
 	AccountID int64  `json:"account_id"`
@@ -385,6 +391,9 @@ type BulkUpdateAccountsResult struct {
 	FailedIDs  []int64                   `json:"failed_ids"`
 	Results    []BulkUpdateAccountResult `json:"results"`
 }
+
+// BulkDeleteAccountsResult uses the same per-account result shape as bulk updates.
+type BulkDeleteAccountsResult = BulkUpdateAccountsResult
 
 type CreateProxyInput struct {
 	Name           string
@@ -2982,6 +2991,41 @@ func (s *adminServiceImpl) DeleteAccount(ctx context.Context, id int64) error {
 		return err
 	}
 	return nil
+}
+
+func (s *adminServiceImpl) BulkDeleteAccounts(ctx context.Context, input *BulkDeleteAccountsInput) (*BulkDeleteAccountsResult, error) {
+	if input == nil {
+		input = &BulkDeleteAccountsInput{}
+	}
+	if len(input.AccountIDs) == 0 && input.Filters != nil {
+		accountIDs, err := s.resolveBulkUpdateTargetIDs(ctx, input.Filters)
+		if err != nil {
+			return nil, err
+		}
+		input.AccountIDs = accountIDs
+	}
+
+	result := &BulkDeleteAccountsResult{
+		SuccessIDs: make([]int64, 0, len(input.AccountIDs)),
+		FailedIDs:  make([]int64, 0, len(input.AccountIDs)),
+		Results:    make([]BulkUpdateAccountResult, 0, len(input.AccountIDs)),
+	}
+	for _, accountID := range input.AccountIDs {
+		entry := BulkUpdateAccountResult{AccountID: accountID}
+		if err := s.DeleteAccount(ctx, accountID); err != nil {
+			entry.Success = false
+			entry.Error = err.Error()
+			result.Failed++
+			result.FailedIDs = append(result.FailedIDs, accountID)
+			result.Results = append(result.Results, entry)
+			continue
+		}
+		entry.Success = true
+		result.Success++
+		result.SuccessIDs = append(result.SuccessIDs, accountID)
+		result.Results = append(result.Results, entry)
+	}
+	return result, nil
 }
 
 func (s *adminServiceImpl) RefreshAccountCredentials(ctx context.Context, id int64) (*Account, error) {

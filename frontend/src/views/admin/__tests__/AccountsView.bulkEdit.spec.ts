@@ -8,13 +8,15 @@ const {
   listWithEtag,
   getBatchTodayStats,
   getAllProxies,
-  getAllGroups
+  getAllGroups,
+  bulkDeleteAccounts
 } = vi.hoisted(() => ({
   listAccounts: vi.fn(),
   listWithEtag: vi.fn(),
   getBatchTodayStats: vi.fn(),
   getAllProxies: vi.fn(),
-  getAllGroups: vi.fn()
+  getAllGroups: vi.fn(),
+  bulkDeleteAccounts: vi.fn()
 }))
 
 vi.mock('@/api/admin', () => ({
@@ -24,6 +26,7 @@ vi.mock('@/api/admin', () => ({
       listWithEtag,
       getBatchTodayStats,
       delete: vi.fn(),
+      bulkDelete: bulkDeleteAccounts,
       batchClearError: vi.fn(),
       batchRefresh: vi.fn(),
       toggleSchedulable: vi.fn()
@@ -75,13 +78,28 @@ const DataTableStub = {
 
 const AccountBulkActionsBarStub = {
   props: ['selectedIds'],
-  emits: ['edit-filtered'],
-  template: '<button data-test="edit-filtered" @click="$emit(\'edit-filtered\')">edit filtered</button>'
+  emits: ['edit-filtered', 'delete-filtered'],
+  template: `
+    <div>
+      <button data-test="delete-filtered" @click="$emit('delete-filtered')">delete filtered</button>
+      <button data-test="edit-filtered" @click="$emit('edit-filtered')">edit filtered</button>
+    </div>
+  `
 }
 
 const BulkEditAccountModalStub = {
   props: ['show', 'target'],
   template: '<div data-test="bulk-edit-modal" :data-show="String(show)" :data-target-mode="target?.mode ?? \'\'"></div>'
+}
+
+const ConfirmDialogStub = {
+  props: ['show', 'title', 'message'],
+  emits: ['confirm', 'cancel'],
+  template: `
+    <div v-if="show" data-test="confirm-dialog" :data-title="title" :data-message="message">
+      <button data-test="confirm-delete" @click="$emit('confirm')">confirm</button>
+    </div>
+  `
 }
 
 describe('admin AccountsView bulk edit scope', () => {
@@ -93,6 +111,7 @@ describe('admin AccountsView bulk edit scope', () => {
     getBatchTodayStats.mockReset()
     getAllProxies.mockReset()
     getAllGroups.mockReset()
+    bulkDeleteAccounts.mockReset()
 
     listAccounts.mockResolvedValue({
       items: [],
@@ -109,6 +128,7 @@ describe('admin AccountsView bulk edit scope', () => {
     getBatchTodayStats.mockResolvedValue({ stats: {} })
     getAllProxies.mockResolvedValue([])
     getAllGroups.mockResolvedValue([])
+    bulkDeleteAccounts.mockResolvedValue({ success: 2, failed: 0, success_ids: [7, 11], failed_ids: [], results: [] })
   })
 
   it('opens bulk edit in filtered-results mode from the bulk actions dropdown', async () => {
@@ -155,6 +175,83 @@ describe('admin AccountsView bulk edit scope', () => {
 
     expect(wrapper.get('[data-test="bulk-edit-modal"]').attributes('data-show')).toBe('true')
     expect(wrapper.get('[data-test="bulk-edit-modal"]').attributes('data-target-mode')).toBe('filtered')
+  })
+
+  it('confirms and deletes all accounts matching current filters', async () => {
+    const wrapper = mount(AccountsView, {
+      global: {
+        stubs: {
+          AppLayout: { template: '<div><slot /></div>' },
+          TablePageLayout: {
+            template: '<div><slot name="filters" /><slot name="table" /><slot name="pagination" /></div>'
+          },
+          DataTable: DataTableStub,
+          Pagination: true,
+          ConfirmDialog: ConfirmDialogStub,
+          AccountTableActions: { template: '<div><slot name="beforeCreate" /><slot name="after" /></div>' },
+          AccountTableFilters: {
+            emits: ['update:filters', 'change'],
+            template: `
+              <button
+                data-test="set-delete-filters"
+                @click="$emit('update:filters', { platform: 'openai', type: 'oauth', status: 'active', group: '12', search: 'bulk-delete-target', privacy_mode: 'training_off' }); $emit('change')"
+              >set filters</button>
+            `
+          },
+          AccountBulkActionsBar: AccountBulkActionsBarStub,
+          AccountActionMenu: true,
+          ImportDataModal: true,
+          ReAuthAccountModal: true,
+          AccountTestModal: true,
+          AccountStatsModal: true,
+          ScheduledTestsPanel: true,
+          SyncFromCrsModal: true,
+          TempUnschedStatusModal: true,
+          ErrorPassthroughRulesModal: true,
+          TLSFingerprintProfilesModal: true,
+          CreateAccountModal: true,
+          EditAccountModal: true,
+          BulkEditAccountModal: BulkEditAccountModalStub,
+          PlatformTypeBadge: true,
+          AccountCapacityCell: true,
+          AccountStatusIndicator: true,
+          AccountTodayStatsCell: true,
+          AccountGroupsCell: true,
+          AccountUsageCell: true,
+          Icon: true
+        }
+      }
+    })
+
+    await flushPromises()
+    await wrapper.get('[data-test="set-delete-filters"]').trigger('click')
+    await flushPromises()
+    listAccounts.mockClear()
+    listAccounts.mockResolvedValue({
+      items: [{ id: 7, platform: 'openai', type: 'oauth' }, { id: 11, platform: 'openai', type: 'oauth' }],
+      total: 2,
+      page: 1,
+      page_size: 100,
+      pages: 1
+    })
+
+    await wrapper.get('[data-test="delete-filtered"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.get('[data-test="confirm-dialog"]').attributes('data-title')).toBe('admin.accounts.bulkDeleteFilteredTitle')
+    await wrapper.get('[data-test="confirm-delete"]').trigger('click')
+    await flushPromises()
+
+    expect(bulkDeleteAccounts).toHaveBeenCalledWith({
+      filters: expect.objectContaining({
+        platform: 'openai',
+        type: 'oauth',
+        status: 'active',
+        group: '12',
+        search: 'bulk-delete-target',
+        privacy_mode: 'training_off'
+      })
+    })
   })
 
   it('renders the created_at column by default', async () => {

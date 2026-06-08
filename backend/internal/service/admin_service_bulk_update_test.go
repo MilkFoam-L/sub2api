@@ -31,6 +31,8 @@ type accountRepoStubForBulkUpdate struct {
 	listResult       *pagination.PaginationResult
 	listErr          error
 	listCalled       bool
+	deleteErrByID    map[int64]error
+	deletedIDs       []int64
 	lastListParams   pagination.PaginationParams
 	lastListFilters  struct {
 		platform    string
@@ -48,6 +50,14 @@ func (s *accountRepoStubForBulkUpdate) BulkUpdate(_ context.Context, ids []int64
 		return 0, s.bulkUpdateErr
 	}
 	return int64(len(ids)), nil
+}
+
+func (s *accountRepoStubForBulkUpdate) Delete(_ context.Context, id int64) error {
+	s.deletedIDs = append(s.deletedIDs, id)
+	if err, ok := s.deleteErrByID[id]; ok {
+		return err
+	}
+	return nil
 }
 
 func (s *accountRepoStubForBulkUpdate) BindGroups(_ context.Context, accountID int64, _ []int64) error {
@@ -202,6 +212,62 @@ func TestAdminService_BulkUpdateAccounts_MixedChannelPreCheckBlocksOnExistingCon
 	require.Contains(t, err.Error(), "mixed channel")
 	// No BindGroups should have been called since the check runs before any write.
 	require.Empty(t, repo.bindGroupsCalls)
+}
+
+func TestAdminService_BulkDeleteAccounts_ResolvesIDsFromFilters(t *testing.T) {
+	repo := &accountRepoStubForBulkUpdate{
+		listData: []Account{
+			{ID: 7},
+			{ID: 11},
+		},
+		listResult: &pagination.PaginationResult{Total: 2},
+	}
+	svc := &adminServiceImpl{accountRepo: repo}
+
+	result, err := svc.BulkDeleteAccounts(context.Background(), &BulkDeleteAccountsInput{
+		Filters: &BulkUpdateAccountFilters{
+			Platform:    PlatformOpenAI,
+			Type:        AccountTypeOAuth,
+			Status:      StatusActive,
+			Group:       "12",
+			PrivacyMode: PrivacyModeCFBlocked,
+			Search:      "bulk-target",
+		},
+	})
+
+	require.NoError(t, err)
+	require.True(t, repo.listCalled, "expected filter-target bulk delete to resolve matching IDs via account list filters")
+	require.Equal(t, PlatformOpenAI, repo.lastListFilters.platform)
+	require.Equal(t, AccountTypeOAuth, repo.lastListFilters.accountType)
+	require.Equal(t, StatusActive, repo.lastListFilters.status)
+	require.Equal(t, "bulk-target", repo.lastListFilters.search)
+	require.Equal(t, int64(12), repo.lastListFilters.groupID)
+	require.Equal(t, PrivacyModeCFBlocked, repo.lastListFilters.privacyMode)
+	require.Equal(t, []int64{7, 11}, repo.deletedIDs)
+	require.Equal(t, 2, result.Success)
+	require.Equal(t, 0, result.Failed)
+	require.Equal(t, []int64{7, 11}, result.SuccessIDs)
+}
+
+func TestAdminService_BulkDeleteAccounts_PartialFailureIDs(t *testing.T) {
+	repo := &accountRepoStubForBulkUpdate{
+		deleteErrByID: map[int64]error{
+			2: errors.New("delete failed"),
+		},
+	}
+	svc := &adminServiceImpl{accountRepo: repo}
+
+	result, err := svc.BulkDeleteAccounts(context.Background(), &BulkDeleteAccountsInput{
+		AccountIDs: []int64{1, 2, 3},
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, []int64{1, 2, 3}, repo.deletedIDs)
+	require.Equal(t, 2, result.Success)
+	require.Equal(t, 1, result.Failed)
+	require.ElementsMatch(t, []int64{1, 3}, result.SuccessIDs)
+	require.ElementsMatch(t, []int64{2}, result.FailedIDs)
+	require.Len(t, result.Results, 3)
 }
 
 func TestAdminServiceBulkUpdateAccounts_ResolvesIDsFromFilters(t *testing.T) {

@@ -179,6 +179,7 @@
           @refresh-token="handleBulkRefreshToken"
           @edit-selected="openBulkEditSelected"
           @edit-filtered="openBulkEditFiltered"
+          @delete-filtered="openBulkDeleteFiltered"
           @clear="clearSelection"
           @select-page="selectPage"
           @toggle-schedulable="handleBulkToggleSchedulable"
@@ -384,6 +385,7 @@
     />
     <TempUnschedStatusModal :show="showTempUnsched" :account="tempUnschedAcc" @close="showTempUnsched = false" @reset="handleTempUnschedReset" />
     <ConfirmDialog :show="showDeleteDialog" :title="t('admin.accounts.deleteAccount')" :message="t('admin.accounts.deleteConfirm', { name: deletingAcc?.name })" :confirm-text="t('common.delete')" :cancel-text="t('common.cancel')" :danger="true" @confirm="confirmDelete" @cancel="showDeleteDialog = false" />
+    <ConfirmDialog :show="showBulkDeleteFilteredDialog" :title="t('admin.accounts.bulkDeleteFilteredTitle')" :message="t('admin.accounts.bulkDeleteFilteredConfirm', { count: bulkDeleteFilteredTarget?.previewCount ?? 0 })" :confirm-text="t('common.delete')" :cancel-text="t('common.cancel')" :danger="true" @confirm="confirmBulkDeleteFiltered" @cancel="closeBulkDeleteFilteredDialog" />
     <ConfirmDialog :show="showExportDataDialog" :title="t('admin.accounts.dataExport')" :message="t('admin.accounts.dataExportConfirmMessage')" :confirm-text="t('admin.accounts.dataExportConfirm')" :cancel-text="t('common.cancel')" @confirm="handleExportData" @cancel="showExportDataDialog = false">
       <label class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
         <input type="checkbox" class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500" v-model="includeProxyOnExport" />
@@ -444,6 +446,18 @@ const proxies = ref<AccountProxy[]>([])
 const groups = ref<AdminGroup[]>([])
 const accountTableRef = ref<HTMLElement | null>(null)
 const dataTableRef = ref<InstanceType<typeof DataTable> | null>(null)
+type AccountFilterSnapshot = {
+  platform?: string
+  type?: string
+  status?: string
+  group?: string
+  search?: string
+  privacy_mode?: string
+  openai_plan_type?: string
+  sort_by?: string
+  sort_order?: AccountSortOrder
+}
+
 type AccountBulkEditTarget =
   | {
       mode: 'selected'
@@ -453,20 +467,16 @@ type AccountBulkEditTarget =
     }
   | {
       mode: 'filtered'
-      filters: {
-        platform?: string
-        type?: string
-        status?: string
-        group?: string
-        search?: string
-        privacy_mode?: string
-        sort_by?: string
-        sort_order?: AccountSortOrder
-      }
+      filters: AccountFilterSnapshot
       previewCount: number
       selectedPlatforms: AccountPlatform[]
       selectedTypes: AccountType[]
     }
+
+type AccountBulkDeleteFilteredTarget = {
+  filters: AccountFilterSnapshot
+  previewCount: number
+}
 const selPlatforms = computed<AccountPlatform[]>(() => {
   const platforms = new Set(
     accounts.value
@@ -491,6 +501,8 @@ const showExportDataDialog = ref(false)
 const includeProxyOnExport = ref(true)
 const showBulkEdit = ref(false)
 const bulkEditTarget = ref<AccountBulkEditTarget | null>(null)
+const showBulkDeleteFilteredDialog = ref(false)
+const bulkDeleteFilteredTarget = ref<AccountBulkDeleteFilteredTarget | null>(null)
 const showTempUnsched = ref(false)
 const showDeleteDialog = ref(false)
 const showReAuth = ref(false)
@@ -869,6 +881,7 @@ const isAnyModalOpen = computed(() => {
     showImportData.value ||
     showExportDataDialog.value ||
     showBulkEdit.value ||
+    showBulkDeleteFilteredDialog.value ||
     showTempUnsched.value ||
     showDeleteDialog.value ||
     showReAuth.value ||
@@ -1405,6 +1418,50 @@ const openBulkEditFiltered = async () => {
     selectedTypes
   }
   showBulkEdit.value = true
+}
+
+const closeBulkDeleteFilteredDialog = () => {
+  showBulkDeleteFilteredDialog.value = false
+  bulkDeleteFilteredTarget.value = null
+}
+
+const openBulkDeleteFiltered = async () => {
+  try {
+    const filters = buildBulkEditFilterSnapshot()
+    const preview = await adminAPI.accounts.list(1, 100, filters)
+    if (preview.total <= 0) {
+      appStore.showInfo(t('admin.accounts.bulkDeleteFilteredEmpty'))
+      return
+    }
+    bulkDeleteFilteredTarget.value = {
+      filters,
+      previewCount: preview.total
+    }
+    showBulkDeleteFilteredDialog.value = true
+  } catch (error) {
+    console.error('Failed to preview filtered bulk delete accounts:', error)
+    appStore.showError(t('admin.accounts.failedToLoad'))
+  }
+}
+
+const confirmBulkDeleteFiltered = async () => {
+  if (!bulkDeleteFilteredTarget.value) return
+  try {
+    const result = await adminAPI.accounts.bulkDelete({
+      filters: bulkDeleteFilteredTarget.value.filters
+    })
+    if (result.failed > 0) {
+      appStore.showError(t('admin.accounts.bulkDeletePartial', { success: result.success, failed: result.failed }))
+    } else {
+      appStore.showSuccess(t('admin.accounts.bulkDeleteSuccess', { count: result.success }))
+    }
+    closeBulkDeleteFilteredDialog()
+    clearSelection()
+    reload()
+  } catch (error) {
+    console.error('Failed to bulk delete filtered accounts:', error)
+    appStore.showError(t('admin.accounts.bulkDeleteFailed'))
+  }
 }
 
 const handleBulkUpdated = () => {
