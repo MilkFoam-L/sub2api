@@ -27,6 +27,17 @@ const (
 	UsageRecordOverflowPolicySync   = "sync"
 )
 
+const (
+	GatewaySchedulingAlgorithmWeightedP2C = "weighted_p2c"
+	GatewaySchedulingAlgorithmLegacyLRU   = "legacy_lru"
+)
+
+const (
+	GatewayStickySessionModeStrict = "strict"
+	GatewayStickySessionModeSoft   = "soft"
+	GatewayStickySessionModeOff    = "off"
+)
+
 // DefaultCSPPolicy is the default Content-Security-Policy with nonce support
 // __CSP_NONCE__ will be replaced with actual nonce at request time by the SecurityHeaders middleware
 const DefaultCSPPolicy = "default-src 'self'; script-src 'self' __CSP_NONCE__ https://challenges.cloudflare.com https://static.cloudflareinsights.com https://*.stripe.com https://static.airwallex.com https://checkout.airwallex.com https://static-demo.airwallex.com https://checkout-demo.airwallex.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://static.airwallex.com https://checkout.airwallex.com https://static-demo.airwallex.com https://checkout-demo.airwallex.com; img-src 'self' data: https:; font-src 'self' data: https://fonts.gstatic.com; connect-src 'self' https:; frame-src https://challenges.cloudflare.com https://*.stripe.com https://checkout.airwallex.com https://checkout-demo.airwallex.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
@@ -1090,6 +1101,23 @@ type GatewaySchedulingConfig struct {
 	// 兜底层账户选择策略: "last_used"(按最后使用时间排序，默认) 或 "random"(随机)
 	FallbackSelectionMode string `mapstructure:"fallback_selection_mode"`
 
+	// 调度算法: "weighted_p2c"(默认，按负载因子加权 P2C) 或 "legacy_lru"(旧 LRU 行为)
+	Algorithm string `mapstructure:"algorithm"`
+	// P2CChoiceCount 每轮随机采样候选数，默认 2。
+	P2CChoiceCount int `mapstructure:"p2c_choice_count"`
+	// SelectionDebtTTLMS 账号被选中后短期调度债务 TTL；0 表示关闭。
+	SelectionDebtTTLMS int `mapstructure:"selection_debt_ttl_ms"`
+	// SelectionDebtWeight 调度债务对 cost 的惩罚权重。
+	SelectionDebtWeight float64 `mapstructure:"selection_debt_weight"`
+	// WaitPenalty 等待队列数量对 cost 的惩罚权重。
+	WaitPenalty float64 `mapstructure:"wait_penalty"`
+	// StickySessionMode: strict(强粘性)、soft(负载过高可逃逸)、off(关闭 session 粘性)。
+	StickySessionMode string `mapstructure:"sticky_session_mode"`
+	// StickyEscapeScoreRatio soft 粘性下 sticky cost 超过最佳同层 cost 的倍率时逃逸。
+	StickyEscapeScoreRatio float64 `mapstructure:"sticky_escape_score_ratio"`
+	// StickyEscapeLoadRate soft 粘性下 sticky 账号负载率达到该百分比时逃逸。
+	StickyEscapeLoadRate int `mapstructure:"sticky_escape_load_rate"`
+
 	// 负载计算
 	LoadBatchEnabled    bool `mapstructure:"load_batch_enabled"`
 	LoadBatchCacheTTLMS int  `mapstructure:"load_batch_cache_ttl_ms"`
@@ -1947,6 +1975,14 @@ func setDefaults() {
 	viper.SetDefault("gateway.scheduling.fallback_wait_timeout", 30*time.Second)
 	viper.SetDefault("gateway.scheduling.fallback_max_waiting", 100)
 	viper.SetDefault("gateway.scheduling.fallback_selection_mode", "last_used")
+	viper.SetDefault("gateway.scheduling.algorithm", GatewaySchedulingAlgorithmWeightedP2C)
+	viper.SetDefault("gateway.scheduling.p2c_choice_count", 2)
+	viper.SetDefault("gateway.scheduling.selection_debt_ttl_ms", 5000)
+	viper.SetDefault("gateway.scheduling.selection_debt_weight", 1.0)
+	viper.SetDefault("gateway.scheduling.wait_penalty", 1.0)
+	viper.SetDefault("gateway.scheduling.sticky_session_mode", GatewayStickySessionModeSoft)
+	viper.SetDefault("gateway.scheduling.sticky_escape_score_ratio", 1.25)
+	viper.SetDefault("gateway.scheduling.sticky_escape_load_rate", 75)
 	viper.SetDefault("gateway.scheduling.load_batch_enabled", true)
 	viper.SetDefault("gateway.scheduling.load_batch_cache_ttl_ms", 200)
 	viper.SetDefault("gateway.scheduling.snapshot_mget_chunk_size", 128)
@@ -2794,6 +2830,42 @@ func (c *Config) Validate() error {
 	}
 	if c.Gateway.Scheduling.FallbackMaxWaiting <= 0 {
 		return fmt.Errorf("gateway.scheduling.fallback_max_waiting must be positive")
+	}
+	algorithm := strings.ToLower(strings.TrimSpace(c.Gateway.Scheduling.Algorithm))
+	switch algorithm {
+	case "":
+		c.Gateway.Scheduling.Algorithm = GatewaySchedulingAlgorithmWeightedP2C
+	case GatewaySchedulingAlgorithmWeightedP2C, GatewaySchedulingAlgorithmLegacyLRU:
+		c.Gateway.Scheduling.Algorithm = algorithm
+	default:
+		return fmt.Errorf("gateway.scheduling.algorithm must be one of %s|%s", GatewaySchedulingAlgorithmWeightedP2C, GatewaySchedulingAlgorithmLegacyLRU)
+	}
+	if c.Gateway.Scheduling.P2CChoiceCount <= 0 {
+		return fmt.Errorf("gateway.scheduling.p2c_choice_count must be positive")
+	}
+	if c.Gateway.Scheduling.SelectionDebtTTLMS < 0 {
+		return fmt.Errorf("gateway.scheduling.selection_debt_ttl_ms must be non-negative")
+	}
+	if c.Gateway.Scheduling.SelectionDebtWeight < 0 {
+		return fmt.Errorf("gateway.scheduling.selection_debt_weight must be non-negative")
+	}
+	if c.Gateway.Scheduling.WaitPenalty < 0 {
+		return fmt.Errorf("gateway.scheduling.wait_penalty must be non-negative")
+	}
+	stickySessionMode := strings.ToLower(strings.TrimSpace(c.Gateway.Scheduling.StickySessionMode))
+	switch stickySessionMode {
+	case "":
+		c.Gateway.Scheduling.StickySessionMode = GatewayStickySessionModeSoft
+	case GatewayStickySessionModeStrict, GatewayStickySessionModeSoft, GatewayStickySessionModeOff:
+		c.Gateway.Scheduling.StickySessionMode = stickySessionMode
+	default:
+		return fmt.Errorf("gateway.scheduling.sticky_session_mode must be one of %s|%s|%s", GatewayStickySessionModeStrict, GatewayStickySessionModeSoft, GatewayStickySessionModeOff)
+	}
+	if c.Gateway.Scheduling.StickyEscapeScoreRatio < 1 {
+		return fmt.Errorf("gateway.scheduling.sticky_escape_score_ratio must be >= 1")
+	}
+	if c.Gateway.Scheduling.StickyEscapeLoadRate < 0 || c.Gateway.Scheduling.StickyEscapeLoadRate > 100 {
+		return fmt.Errorf("gateway.scheduling.sticky_escape_load_rate must be between 0 and 100")
 	}
 	if c.Gateway.Scheduling.LoadBatchCacheTTLMS < 0 {
 		return fmt.Errorf("gateway.scheduling.load_batch_cache_ttl_ms must be non-negative")

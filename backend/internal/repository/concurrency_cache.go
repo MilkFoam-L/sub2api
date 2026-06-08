@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/redis/go-redis/v9"
@@ -31,6 +32,8 @@ const (
 	waitQueueKeyPrefix = "concurrency:wait:"
 	// 账号级等待队列计数器格式: wait:account:{accountID}
 	accountWaitKeyPrefix = "wait:account:"
+	// 账号调度短期选择债务，避免低并发时持续命中同一账号
+	accountSelectionDebtKeyPrefix = "scheduler:account_selection:"
 
 	// 默认槽位过期时间（分钟），可通过配置覆盖
 	defaultSlotTTLMinutes = 15
@@ -374,6 +377,46 @@ func (c *concurrencyCache) GetAccountWaitingCount(ctx context.Context, accountID
 		return 0, nil
 	}
 	return val, nil
+}
+
+func (c *concurrencyCache) RecordAccountSelection(ctx context.Context, accountID int64, ttl time.Duration) error {
+	if accountID <= 0 || ttl <= 0 {
+		return nil
+	}
+	key := accountSelectionDebtKeyPrefix + strconv.FormatInt(accountID, 10)
+	pipe := c.rdb.Pipeline()
+	pipe.Incr(ctx, key)
+	pipe.PExpire(ctx, key, ttl)
+	_, err := pipe.Exec(ctx)
+	return err
+}
+
+func (c *concurrencyCache) GetAccountSelectionDebtBatch(ctx context.Context, accountIDs []int64) (map[int64]int, error) {
+	result := make(map[int64]int, len(accountIDs))
+	if len(accountIDs) == 0 {
+		return result, nil
+	}
+	pipe := c.rdb.Pipeline()
+	type debtCmd struct {
+		accountID int64
+		cmd       *redis.StringCmd
+	}
+	cmds := make([]debtCmd, 0, len(accountIDs))
+	for _, accountID := range accountIDs {
+		key := accountSelectionDebtKeyPrefix + strconv.FormatInt(accountID, 10)
+		cmds = append(cmds, debtCmd{accountID: accountID, cmd: pipe.Get(ctx, key)})
+	}
+	if _, err := pipe.Exec(ctx); err != nil && !errors.Is(err, redis.Nil) {
+		return nil, fmt.Errorf("pipeline exec: %w", err)
+	}
+	for _, item := range cmds {
+		value, err := item.cmd.Int()
+		if err != nil {
+			value = 0
+		}
+		result[item.accountID] = value
+	}
+	return result, nil
 }
 
 func (c *concurrencyCache) GetAccountsLoadBatch(ctx context.Context, accounts []service.AccountWithConcurrency) (map[int64]*service.AccountLoadInfo, error) {

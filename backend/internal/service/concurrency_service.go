@@ -52,6 +52,13 @@ type ConcurrencyCache interface {
 	CleanupStaleProcessSlots(ctx context.Context, activeRequestPrefix string) error
 }
 
+// AccountSelectionDebtCache 是调度热路径的可选缓存能力。
+// 账号一旦被调度选中就立即写入短 TTL debt，避免低并发/短请求场景持续命中同一账号。
+type AccountSelectionDebtCache interface {
+	RecordAccountSelection(ctx context.Context, accountID int64, ttl time.Duration) error
+	GetAccountSelectionDebtBatch(ctx context.Context, accountIDs []int64) (map[int64]int, error)
+}
+
 var (
 	requestIDPrefix  = initRequestIDPrefix()
 	requestIDCounter atomic.Uint64
@@ -99,10 +106,18 @@ type ConcurrencyService struct {
 	accountLoadCacheMu  sync.RWMutex
 	accountLoadCache    map[string]cachedAccountLoadBatch
 	accountLoadGroup    singleflight.Group
+
+	selectionDebtMu sync.RWMutex
+	selectionDebts  map[int64]cachedAccountSelectionDebt
 }
 
 type cachedAccountLoadBatch struct {
 	loadMap   map[int64]*AccountLoadInfo
+	expiresAt time.Time
+}
+
+type cachedAccountSelectionDebt struct {
+	count     int
 	expiresAt time.Time
 }
 
@@ -111,6 +126,7 @@ func NewConcurrencyService(cache ConcurrencyCache) *ConcurrencyService {
 	svc := &ConcurrencyService{
 		cache:            cache,
 		accountLoadCache: make(map[string]cachedAccountLoadBatch),
+		selectionDebts:   make(map[int64]cachedAccountSelectionDebt),
 	}
 	svc.SetAccountLoadBatchCacheTTL(defaultAccountLoadBatchCacheTTL)
 	return svc
@@ -382,6 +398,53 @@ func (s *ConcurrencyService) fetchAccountsLoadBatch(ctx context.Context, account
 	redisCtx, cancel := context.WithTimeout(baseCtx, accountLoadBatchFetchTimeout)
 	defer cancel()
 	return s.cache.GetAccountsLoadBatch(redisCtx, accounts)
+}
+
+func (s *ConcurrencyService) RecordAccountSelection(ctx context.Context, accountID int64, ttl time.Duration) error {
+	if s == nil || accountID <= 0 || ttl <= 0 {
+		return nil
+	}
+	if cache, ok := s.cache.(AccountSelectionDebtCache); ok {
+		return cache.RecordAccountSelection(ctx, accountID, ttl)
+	}
+
+	now := time.Now()
+	s.selectionDebtMu.Lock()
+	if s.selectionDebts == nil {
+		s.selectionDebts = make(map[int64]cachedAccountSelectionDebt)
+	}
+	current := s.selectionDebts[accountID]
+	if current.expiresAt.IsZero() || !now.Before(current.expiresAt) {
+		current.count = 0
+	}
+	current.count++
+	current.expiresAt = now.Add(ttl)
+	s.selectionDebts[accountID] = current
+	s.selectionDebtMu.Unlock()
+	return nil
+}
+
+func (s *ConcurrencyService) GetAccountSelectionDebtBatch(ctx context.Context, accountIDs []int64) (map[int64]int, error) {
+	result := make(map[int64]int, len(accountIDs))
+	if s == nil || len(accountIDs) == 0 {
+		return result, nil
+	}
+	if cache, ok := s.cache.(AccountSelectionDebtCache); ok {
+		return cache.GetAccountSelectionDebtBatch(ctx, accountIDs)
+	}
+
+	now := time.Now()
+	s.selectionDebtMu.RLock()
+	for _, accountID := range accountIDs {
+		current := s.selectionDebts[accountID]
+		if current.count > 0 && now.Before(current.expiresAt) {
+			result[accountID] = current.count
+		} else {
+			result[accountID] = 0
+		}
+	}
+	s.selectionDebtMu.RUnlock()
+	return result, nil
 }
 
 func (s *ConcurrencyService) getCachedAccountLoadBatch(key string, now time.Time) (map[int64]*AccountLoadInfo, bool) {

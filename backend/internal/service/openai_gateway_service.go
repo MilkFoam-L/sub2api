@@ -2277,16 +2277,9 @@ func (s *OpenAIGatewayService) newAcquiredSelectionResult(ctx context.Context, a
 
 func (s *OpenAIGatewayService) schedulingConfig() config.GatewaySchedulingConfig {
 	if s.cfg != nil {
-		return s.cfg.Gateway.Scheduling
+		return normalizeGatewaySchedulingConfig(s.cfg.Gateway.Scheduling)
 	}
-	return config.GatewaySchedulingConfig{
-		StickySessionMaxWaiting:  3,
-		StickySessionWaitTimeout: 45 * time.Second,
-		FallbackWaitTimeout:      30 * time.Second,
-		FallbackMaxWaiting:       100,
-		LoadBatchEnabled:         true,
-		SlotCleanupInterval:      30 * time.Second,
-	}
+	return defaultGatewaySchedulingConfig()
 }
 
 // GetAccessToken gets the access token for an OpenAI account

@@ -424,6 +424,30 @@ gateway:
     # Fallback max waiting queue size
     # 兜底最大排队长度
     fallback_max_waiting: 100
+    # Scheduler algorithm: weighted_p2c uses LoadFactor as capacity weight; legacy_lru keeps old priority/load/LRU order
+    # 调度算法：weighted_p2c 会把账号 UI 中的 LoadFactor 当作容量权重；legacy_lru 保留旧优先级/负载/LRU 行为
+    algorithm: weighted_p2c
+    # Number of weighted power-of-two-choices samples per selection round
+    # 每轮 Weighted P2C 随机采样账号数
+    p2c_choice_count: 2
+    # Short TTL selection debt after an account is chosen, in milliseconds; 0 disables
+    # 账号一被选中就记录的短期调度债务 TTL（毫秒），用于避免短请求持续命中同一账号；0 表示关闭
+    selection_debt_ttl_ms: 5000
+    # Selection debt penalty weight in scheduler cost
+    # 调度债务在 cost 中的惩罚权重
+    selection_debt_weight: 1.0
+    # Waiting queue penalty weight in scheduler cost
+    # 等待队列在 cost 中的惩罚权重
+    wait_penalty: 1.0
+    # Sticky session mode: strict keeps binding, soft escapes overloaded accounts, off disables session stickiness
+    # 粘性会话模式：strict 强粘性，soft 过载可逃逸，off 关闭会话粘性
+    sticky_session_mode: soft
+    # Soft sticky escapes when sticky cost exceeds best same-priority cost by this ratio
+    # soft 粘性下，sticky 账号 cost 超过同优先级最佳账号的倍率时逃逸
+    sticky_escape_score_ratio: 1.25
+    # Soft sticky escapes when sticky account load rate reaches this percent
+    # soft 粘性下，sticky 账号负载率达到该百分比时逃逸
+    sticky_escape_load_rate: 75
     # Enable batch load calculation for scheduling
     # 启用调度批量负载计算
     load_batch_enabled: true

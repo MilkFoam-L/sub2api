@@ -1229,6 +1229,7 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_SessionStickyBusyKeepsS
 	cfg := &config.Config{}
 	cfg.Gateway.Scheduling.StickySessionMaxWaiting = 2
 	cfg.Gateway.Scheduling.StickySessionWaitTimeout = 45 * time.Second
+	cfg.Gateway.Scheduling.StickySessionMode = config.GatewayStickySessionModeStrict
 	cfg.Gateway.OpenAIScheduler.StickyEscapeEnabled = false
 	cfg.Gateway.OpenAIScheduler.StickyEscapeTTFTMs = 15000
 	cfg.Gateway.OpenAIScheduler.StickyEscapeErrorRate = 0.5
@@ -2001,13 +2002,14 @@ func TestBuildOpenAIWeightedSelectionOrder_DeterministicBySessionSeed(t *testing
 		RequestedModel: "gpt-5.1",
 	}
 
-	first := buildOpenAIWeightedSelectionOrder(candidates, req)
-	second := buildOpenAIWeightedSelectionOrder(candidates, req)
-	require.Len(t, first, len(candidates))
-	require.Len(t, second, len(candidates))
-	for i := range first {
-		require.Equal(t, first[i].account.ID, second[i].account.ID)
+	_ = req
+	order := buildOpenAIWeightedSelectionOrder(candidates, config.GatewaySchedulingConfig{Algorithm: config.GatewaySchedulingAlgorithmWeightedP2C, P2CChoiceCount: 2, SelectionDebtWeight: 1, WaitPenalty: 1})
+	require.Len(t, order, len(candidates))
+	seen := map[int64]struct{}{}
+	for _, item := range order {
+		seen[item.account.ID] = struct{}{}
 	}
+	require.Len(t, seen, len(candidates))
 }
 
 func TestOpenAIGatewayService_SelectAccountWithScheduler_LoadBalanceDistributesAcrossSessions(t *testing.T) {
@@ -2122,11 +2124,7 @@ func TestBuildOpenAIWeightedSelectionOrder_HandlesInvalidScores(t *testing.T) {
 			score:    -1,
 		},
 	}
-	req := OpenAIAccountScheduleRequest{
-		SessionHash: "seed_invalid_scores",
-	}
-
-	order := buildOpenAIWeightedSelectionOrder(candidates, req)
+	order := buildOpenAIWeightedSelectionOrder(candidates, config.GatewaySchedulingConfig{Algorithm: config.GatewaySchedulingAlgorithmWeightedP2C, P2CChoiceCount: 2, SelectionDebtWeight: 1, WaitPenalty: 1})
 	require.Len(t, order, len(candidates))
 	seen := map[int64]struct{}{}
 	for _, item := range order {

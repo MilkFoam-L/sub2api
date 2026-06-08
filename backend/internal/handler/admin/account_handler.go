@@ -160,6 +160,11 @@ type BulkUpdateAccountFilters struct {
 	OpenAIPlanType string `json:"openai_plan_type"`
 }
 
+type BulkDeleteAccountsRequest struct {
+	AccountIDs []int64                   `json:"account_ids"`
+	Filters    *BulkUpdateAccountFilters `json:"filters"`
+}
+
 // CheckMixedChannelRequest represents check mixed channel risk request
 type CheckMixedChannelRequest struct {
 	Platform  string  `json:"platform" binding:"required"`
@@ -696,6 +701,31 @@ func (h *AccountHandler) Delete(c *gin.Context) {
 	}
 
 	response.Success(c, gin.H{"message": "Account deleted successfully"})
+}
+
+// BulkDelete handles deleting multiple accounts by selected IDs or current filters.
+// POST /api/v1/admin/accounts/bulk-delete
+func (h *AccountHandler) BulkDelete(c *gin.Context) {
+	var req BulkDeleteAccountsRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+	if len(req.AccountIDs) == 0 && req.Filters == nil {
+		response.BadRequest(c, "account_ids or filters is required")
+		return
+	}
+
+	result, err := h.adminService.BulkDeleteAccounts(c.Request.Context(), &service.BulkDeleteAccountsInput{
+		AccountIDs: req.AccountIDs,
+		Filters:    toServiceBulkUpdateAccountFilters(req.Filters),
+	})
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+
+	response.Success(c, result)
 }
 
 // TestAccountRequest represents the request body for testing an account

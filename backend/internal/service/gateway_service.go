@@ -1872,30 +1872,14 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 			}
 
 			if len(routingAvailable) > 0 {
-				// 排序：优先级 > 负载率 > 最后使用时间
-				sort.SliceStable(routingAvailable, func(i, j int) bool {
-					a, b := routingAvailable[i], routingAvailable[j]
-					if a.account.Priority != b.account.Priority {
-						return a.account.Priority < b.account.Priority
-					}
-					if a.loadInfo.LoadRate != b.loadInfo.LoadRate {
-						return a.loadInfo.LoadRate < b.loadInfo.LoadRate
-					}
-					switch {
-					case a.account.LastUsedAt == nil && b.account.LastUsedAt != nil:
-						return true
-					case a.account.LastUsedAt != nil && b.account.LastUsedAt == nil:
-						return false
-					case a.account.LastUsedAt == nil && b.account.LastUsedAt == nil:
-						return false
-					default:
-						return a.account.LastUsedAt.Before(*b.account.LastUsedAt)
-					}
-				})
-				shuffleWithinSortGroups(routingAvailable)
+				selectionDebts := map[int64]int{}
+				if s.concurrencyService != nil {
+					selectionDebts, _ = s.concurrencyService.GetAccountSelectionDebtBatch(ctx, accountIDsFromLoadItems(routingAvailable))
+				}
+				routingOrder := buildWeightedP2CSelectionOrder(routingAvailable, selectionDebts, preferOAuth, cfg)
 
 				// 4. 尝试获取槽位
-				for _, item := range routingAvailable {
+				for _, item := range routingOrder {
 					result, err := s.tryAcquireAccountSlot(ctx, item.account.ID, item.account.Concurrency)
 					if err == nil && result.Acquired {
 						// 会话数量限制检查
@@ -1913,9 +1897,8 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 					}
 				}
 
-				// 5. 所有路由账号槽位满，尝试返回等待计划（选择负载最低的）
-				// 遍历找到第一个满足会话限制的账号
-				for _, item := range routingAvailable {
+				// 5. 所有路由账号槽位满，按同一 Weighted P2C/cost 顺序返回等待计划。
+				for _, item := range routingOrder {
 					if !s.checkAndRegisterSession(ctx, item.account, sessionHash) {
 						continue // 会话限制已满，尝试下一个
 					}
@@ -1978,6 +1961,55 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 				)
 
 				if !clearSticky && platformOK && modelSupported && modelSchedulable && quotaOK && windowCostOK && rpmOK && schedulable {
+					if cfg.StickySessionMode == config.GatewayStickySessionModeOff {
+						slog.Debug("sticky.layer1_5_no_routing_miss",
+							"account_id", accountID,
+							"reason", "sticky_off",
+							"session", shortSessionHash(sessionHash),
+						)
+						goto stickyLayerDone
+					} else if cfg.StickySessionMode == config.GatewayStickySessionModeSoft && s.concurrencyService != nil {
+						stickyItems := make([]accountWithLoad, 0, len(accounts))
+						loadReq := make([]AccountWithConcurrency, 0, len(accounts))
+						for i := range accounts {
+							candidate := &accounts[i]
+							if isExcluded(candidate.ID) || !s.isAccountSchedulableForSelection(candidate) || !s.isAccountAllowedForPlatform(candidate, platform, useMixed) {
+								continue
+							}
+							if requestedModel != "" && !s.isModelSupportedByAccountWithContext(ctx, candidate, requestedModel) {
+								continue
+							}
+							if !s.isAccountSchedulableForModelSelection(ctx, candidate, requestedModel) || !s.isAccountSchedulableForQuota(candidate) {
+								continue
+							}
+							stickyItems = append(stickyItems, accountWithLoad{account: candidate, loadInfo: &AccountLoadInfo{AccountID: candidate.ID}})
+							loadReq = append(loadReq, AccountWithConcurrency{ID: candidate.ID, MaxConcurrency: candidate.EffectiveLoadFactor()})
+						}
+						if loadMap, loadErr := s.concurrencyService.GetAccountsLoadBatch(ctx, loadReq); loadErr == nil {
+							for i := range stickyItems {
+								if loadInfo := loadMap[stickyItems[i].account.ID]; loadInfo != nil {
+									stickyItems[i].loadInfo = loadInfo
+								}
+							}
+						}
+						debts, _ := s.concurrencyService.GetAccountSelectionDebtBatch(ctx, accountIDsFromLoadItems(stickyItems))
+						var stickyItem accountWithLoad
+						for _, item := range stickyItems {
+							if item.account.ID == accountID {
+								stickyItem = item
+								break
+							}
+						}
+						decision := shouldUseStickyAccountForScheduling(stickyItem, stickyItems, debts, cfg)
+						if !decision.useSticky {
+							slog.Debug("sticky.layer1_5_no_routing_miss",
+								"account_id", accountID,
+								"reason", "soft_escape_"+decision.reason,
+								"session", shortSessionHash(sessionHash),
+							)
+							goto stickyLayerDone
+						}
+					}
 					result, err := s.tryAcquireAccountSlot(ctx, accountID, account.Concurrency)
 					if err == nil && result.Acquired {
 						// 会话数量限制检查
@@ -2054,6 +2086,7 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 		)
 	}
 
+stickyLayerDone:
 	// ============ Layer 2: 负载感知选择 ============
 	slog.Debug("sticky.layer2_fallback",
 		"session", shortSessionHash(sessionHash),
@@ -2131,18 +2164,12 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 			}
 		}
 
-		// 分层过滤选择：优先级 → 负载率 → LRU
-		for len(available) > 0 {
-			// 1. 取优先级最小的集合
-			candidates := filterByMinPriority(available)
-			// 2. 取负载率最低的集合
-			candidates = filterByMinLoadRate(candidates)
-			// 3. LRU 选择最久未用的账号
-			selected := selectByLRU(candidates, preferOAuth)
-			if selected == nil {
-				break
-			}
-
+		selectionDebts := map[int64]int{}
+		if s.concurrencyService != nil {
+			selectionDebts, _ = s.concurrencyService.GetAccountSelectionDebtBatch(ctx, accountIDsFromLoadItems(available))
+		}
+		selectionOrder := buildWeightedP2CSelectionOrder(available, selectionDebts, preferOAuth, cfg)
+		for _, selected := range selectionOrder {
 			result, err := s.tryAcquireAccountSlot(ctx, selected.account.ID, selected.account.Concurrency)
 			if err == nil && result.Acquired {
 				// 会话数量限制检查
@@ -2155,22 +2182,32 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 					return s.newSelectionResult(ctx, selected.account, true, result.ReleaseFunc, nil)
 				}
 			}
-
-			// 移除已尝试的账号，重新进行分层过滤
-			selectedID := selected.account.ID
-			newAvailable := make([]accountWithLoad, 0, len(available)-1)
-			for _, acc := range available {
-				if acc.account.ID != selectedID {
-					newAvailable = append(newAvailable, acc)
-				}
-			}
-			available = newAvailable
 		}
 	}
 
 	// ============ Layer 3: 兜底排队 ============
-	s.sortCandidatesForFallback(candidates, preferOAuth, cfg.FallbackSelectionMode)
-	for _, acc := range candidates {
+	fallbackAccounts := append([]*Account(nil), candidates...)
+	if cfg.Algorithm == config.GatewaySchedulingAlgorithmLegacyLRU {
+		s.sortCandidatesForFallback(fallbackAccounts, preferOAuth, cfg.FallbackSelectionMode)
+	} else {
+		fallbackItems := make([]accountWithLoad, 0, len(candidates))
+		for _, acc := range candidates {
+			fallbackItems = append(fallbackItems, accountWithLoad{account: acc, loadInfo: &AccountLoadInfo{AccountID: acc.ID}})
+		}
+		fallbackDebts := map[int64]int{}
+		if s.concurrencyService != nil {
+			fallbackDebts, _ = s.concurrencyService.GetAccountSelectionDebtBatch(ctx, accountIDsFromLoadItems(fallbackItems))
+		}
+		fallbackOrder := buildWeightedP2CSelectionOrder(fallbackItems, fallbackDebts, preferOAuth, cfg)
+		fallbackAccounts = fallbackAccounts[:0]
+		for _, item := range fallbackOrder {
+			fallbackAccounts = append(fallbackAccounts, item.account)
+		}
+	}
+	for _, acc := range fallbackAccounts {
+		if acc == nil {
+			continue
+		}
 		// 会话数量限制检查（等待计划也需要占用会话配额）
 		if !s.checkAndRegisterSession(ctx, acc, sessionHash) {
 			continue // 会话限制已满，尝试下一个账号
@@ -2213,16 +2250,9 @@ func (s *GatewayService) tryAcquireByLegacyOrder(ctx context.Context, candidates
 
 func (s *GatewayService) schedulingConfig() config.GatewaySchedulingConfig {
 	if s.cfg != nil {
-		return s.cfg.Gateway.Scheduling
+		return normalizeGatewaySchedulingConfig(s.cfg.Gateway.Scheduling)
 	}
-	return config.GatewaySchedulingConfig{
-		StickySessionMaxWaiting:  3,
-		StickySessionWaitTimeout: 45 * time.Second,
-		FallbackWaitTimeout:      30 * time.Second,
-		FallbackMaxWaiting:       100,
-		LoadBatchEnabled:         true,
-		SlotCleanupInterval:      30 * time.Second,
-	}
+	return defaultGatewaySchedulingConfig()
 }
 
 func (s *GatewayService) withGroupContext(ctx context.Context, group *Group) context.Context {
@@ -2838,6 +2868,9 @@ func (s *GatewayService) hydrateSelectedAccount(ctx context.Context, account *Ac
 }
 
 func (s *GatewayService) newSelectionResult(ctx context.Context, account *Account, acquired bool, release func(), waitPlan *AccountWaitPlan) (*AccountSelectionResult, error) {
+	if s != nil && s.concurrencyService != nil && account != nil {
+		_ = s.concurrencyService.RecordAccountSelection(ctx, account.ID, accountSelectionDebtTTL(s.schedulingConfig()))
+	}
 	hydrated, err := s.hydrateSelectedAccount(ctx, account)
 	if err != nil {
 		return nil, err

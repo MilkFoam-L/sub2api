@@ -400,29 +400,35 @@ export async function batchUpdateCredentials(request: {
  * @param updates - Fields to update
  * @returns Success confirmation
  */
-export async function bulkUpdate(
-  accountIdsOrPayload: number[] | Record<string, unknown>,
-  updates?: Record<string, unknown>
-): Promise<{
+export interface BulkAccountOperationResponse {
   success: number
   failed: number
   success_ids?: number[]
   failed_ids?: number[]
   results: Array<{ account_id: number; success: boolean; error?: string }>
-  }> {
+}
+
+export async function bulkUpdate(
+  accountIdsOrPayload: number[] | Record<string, unknown>,
+  updates?: Record<string, unknown>
+): Promise<BulkAccountOperationResponse> {
   const payload = Array.isArray(accountIdsOrPayload)
     ? {
         account_ids: accountIdsOrPayload,
         ...(updates ?? {})
       }
     : accountIdsOrPayload
-  const { data } = await apiClient.post<{
-    success: number
-    failed: number
-    success_ids?: number[]
-    failed_ids?: number[]
-    results: Array<{ account_id: number; success: boolean; error?: string }>
-  }>('/admin/accounts/bulk-update', payload)
+  const { data } = await apiClient.post<BulkAccountOperationResponse>('/admin/accounts/bulk-update', payload)
+  return data
+}
+
+export async function bulkDelete(
+  accountIdsOrPayload: number[] | Record<string, unknown>
+): Promise<BulkAccountOperationResponse> {
+  const payload = Array.isArray(accountIdsOrPayload)
+    ? { account_ids: accountIdsOrPayload }
+    : accountIdsOrPayload
+  const { data } = await apiClient.post<BulkAccountOperationResponse>('/admin/accounts/bulk-delete', payload)
   return data
 }
 
@@ -784,6 +790,7 @@ export const accountsAPI = {
   batchCreate,
   batchUpdateCredentials,
   bulkUpdate,
+  bulkDelete,
   previewFromCrs,
   syncFromCrs,
   exportData,

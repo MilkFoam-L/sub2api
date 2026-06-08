@@ -70,6 +70,30 @@ func TestLoadDefaultSchedulingConfig(t *testing.T) {
 	if cfg.Gateway.Scheduling.FallbackMaxWaiting != 100 {
 		t.Fatalf("FallbackMaxWaiting = %d, want 100", cfg.Gateway.Scheduling.FallbackMaxWaiting)
 	}
+	if cfg.Gateway.Scheduling.Algorithm != GatewaySchedulingAlgorithmWeightedP2C {
+		t.Fatalf("Algorithm = %q, want %q", cfg.Gateway.Scheduling.Algorithm, GatewaySchedulingAlgorithmWeightedP2C)
+	}
+	if cfg.Gateway.Scheduling.P2CChoiceCount != 2 {
+		t.Fatalf("P2CChoiceCount = %d, want 2", cfg.Gateway.Scheduling.P2CChoiceCount)
+	}
+	if cfg.Gateway.Scheduling.SelectionDebtTTLMS != 5000 {
+		t.Fatalf("SelectionDebtTTLMS = %d, want 5000", cfg.Gateway.Scheduling.SelectionDebtTTLMS)
+	}
+	if cfg.Gateway.Scheduling.SelectionDebtWeight != 1.0 {
+		t.Fatalf("SelectionDebtWeight = %v, want 1.0", cfg.Gateway.Scheduling.SelectionDebtWeight)
+	}
+	if cfg.Gateway.Scheduling.WaitPenalty != 1.0 {
+		t.Fatalf("WaitPenalty = %v, want 1.0", cfg.Gateway.Scheduling.WaitPenalty)
+	}
+	if cfg.Gateway.Scheduling.StickySessionMode != GatewayStickySessionModeSoft {
+		t.Fatalf("StickySessionMode = %q, want %q", cfg.Gateway.Scheduling.StickySessionMode, GatewayStickySessionModeSoft)
+	}
+	if cfg.Gateway.Scheduling.StickyEscapeScoreRatio != 1.25 {
+		t.Fatalf("StickyEscapeScoreRatio = %v, want 1.25", cfg.Gateway.Scheduling.StickyEscapeScoreRatio)
+	}
+	if cfg.Gateway.Scheduling.StickyEscapeLoadRate != 75 {
+		t.Fatalf("StickyEscapeLoadRate = %d, want 75", cfg.Gateway.Scheduling.StickyEscapeLoadRate)
+	}
 	if !cfg.Gateway.Scheduling.LoadBatchEnabled {
 		t.Fatalf("LoadBatchEnabled = false, want true")
 	}
@@ -298,6 +322,14 @@ func TestLoadIdempotencyConfigFromEnv(t *testing.T) {
 func TestLoadSchedulingConfigFromEnv(t *testing.T) {
 	resetViperWithJWTSecret(t)
 	t.Setenv("GATEWAY_SCHEDULING_STICKY_SESSION_MAX_WAITING", "5")
+	t.Setenv("GATEWAY_SCHEDULING_ALGORITHM", GatewaySchedulingAlgorithmLegacyLRU)
+	t.Setenv("GATEWAY_SCHEDULING_P2C_CHOICE_COUNT", "3")
+	t.Setenv("GATEWAY_SCHEDULING_SELECTION_DEBT_TTL_MS", "2500")
+	t.Setenv("GATEWAY_SCHEDULING_SELECTION_DEBT_WEIGHT", "2.5")
+	t.Setenv("GATEWAY_SCHEDULING_WAIT_PENALTY", "1.5")
+	t.Setenv("GATEWAY_SCHEDULING_STICKY_SESSION_MODE", GatewayStickySessionModeStrict)
+	t.Setenv("GATEWAY_SCHEDULING_STICKY_ESCAPE_SCORE_RATIO", "1.75")
+	t.Setenv("GATEWAY_SCHEDULING_STICKY_ESCAPE_LOAD_RATE", "90")
 
 	cfg, err := Load()
 	if err != nil {
@@ -306,6 +338,30 @@ func TestLoadSchedulingConfigFromEnv(t *testing.T) {
 
 	if cfg.Gateway.Scheduling.StickySessionMaxWaiting != 5 {
 		t.Fatalf("StickySessionMaxWaiting = %d, want 5", cfg.Gateway.Scheduling.StickySessionMaxWaiting)
+	}
+	if cfg.Gateway.Scheduling.Algorithm != GatewaySchedulingAlgorithmLegacyLRU {
+		t.Fatalf("Algorithm = %q, want %q", cfg.Gateway.Scheduling.Algorithm, GatewaySchedulingAlgorithmLegacyLRU)
+	}
+	if cfg.Gateway.Scheduling.P2CChoiceCount != 3 {
+		t.Fatalf("P2CChoiceCount = %d, want 3", cfg.Gateway.Scheduling.P2CChoiceCount)
+	}
+	if cfg.Gateway.Scheduling.SelectionDebtTTLMS != 2500 {
+		t.Fatalf("SelectionDebtTTLMS = %d, want 2500", cfg.Gateway.Scheduling.SelectionDebtTTLMS)
+	}
+	if cfg.Gateway.Scheduling.SelectionDebtWeight != 2.5 {
+		t.Fatalf("SelectionDebtWeight = %v, want 2.5", cfg.Gateway.Scheduling.SelectionDebtWeight)
+	}
+	if cfg.Gateway.Scheduling.WaitPenalty != 1.5 {
+		t.Fatalf("WaitPenalty = %v, want 1.5", cfg.Gateway.Scheduling.WaitPenalty)
+	}
+	if cfg.Gateway.Scheduling.StickySessionMode != GatewayStickySessionModeStrict {
+		t.Fatalf("StickySessionMode = %q, want %q", cfg.Gateway.Scheduling.StickySessionMode, GatewayStickySessionModeStrict)
+	}
+	if cfg.Gateway.Scheduling.StickyEscapeScoreRatio != 1.75 {
+		t.Fatalf("StickyEscapeScoreRatio = %v, want 1.75", cfg.Gateway.Scheduling.StickyEscapeScoreRatio)
+	}
+	if cfg.Gateway.Scheduling.StickyEscapeLoadRate != 90 {
+		t.Fatalf("StickyEscapeLoadRate = %d, want 90", cfg.Gateway.Scheduling.StickyEscapeLoadRate)
 	}
 }
 
@@ -1533,6 +1589,46 @@ func TestValidateConfigErrors(t *testing.T) {
 			name:    "gateway scheduling load batch cache ttl",
 			mutate:  func(c *Config) { c.Gateway.Scheduling.LoadBatchCacheTTLMS = -1 },
 			wantErr: "gateway.scheduling.load_batch_cache_ttl_ms",
+		},
+		{
+			name:    "gateway scheduling algorithm invalid",
+			mutate:  func(c *Config) { c.Gateway.Scheduling.Algorithm = "least_magic" },
+			wantErr: "gateway.scheduling.algorithm",
+		},
+		{
+			name:    "gateway scheduling p2c choice count",
+			mutate:  func(c *Config) { c.Gateway.Scheduling.P2CChoiceCount = 0 },
+			wantErr: "gateway.scheduling.p2c_choice_count",
+		},
+		{
+			name:    "gateway scheduling selection debt ttl",
+			mutate:  func(c *Config) { c.Gateway.Scheduling.SelectionDebtTTLMS = -1 },
+			wantErr: "gateway.scheduling.selection_debt_ttl_ms",
+		},
+		{
+			name:    "gateway scheduling selection debt weight",
+			mutate:  func(c *Config) { c.Gateway.Scheduling.SelectionDebtWeight = -0.1 },
+			wantErr: "gateway.scheduling.selection_debt_weight",
+		},
+		{
+			name:    "gateway scheduling wait penalty",
+			mutate:  func(c *Config) { c.Gateway.Scheduling.WaitPenalty = -0.1 },
+			wantErr: "gateway.scheduling.wait_penalty",
+		},
+		{
+			name:    "gateway scheduling sticky session mode invalid",
+			mutate:  func(c *Config) { c.Gateway.Scheduling.StickySessionMode = "forever" },
+			wantErr: "gateway.scheduling.sticky_session_mode",
+		},
+		{
+			name:    "gateway scheduling sticky escape score ratio",
+			mutate:  func(c *Config) { c.Gateway.Scheduling.StickyEscapeScoreRatio = 0.9 },
+			wantErr: "gateway.scheduling.sticky_escape_score_ratio",
+		},
+		{
+			name:    "gateway scheduling sticky escape load rate",
+			mutate:  func(c *Config) { c.Gateway.Scheduling.StickyEscapeLoadRate = 101 },
+			wantErr: "gateway.scheduling.sticky_escape_load_rate",
 		},
 		{
 			name:    "gateway scheduling outbox poll",
