@@ -1,9 +1,12 @@
 <template>
   <div>
     <label class="input-label">
-      {{ t('admin.users.groups') }}
+      {{ label || t('admin.users.groups') }}
       <span class="font-normal text-gray-400">{{ t('common.selectedCount', { count: modelValue.length }) }}</span>
     </label>
+    <p v-if="hint" class="mb-2 text-xs text-gray-500 dark:text-gray-400">
+      {{ hint }}
+    </p>
     <div
       v-if="isSearchable"
       class="flex items-center gap-2 rounded-t-lg border border-b-0 border-gray-200 bg-gray-50 px-3 py-2 dark:border-dark-600 dark:bg-dark-800"
@@ -71,9 +74,13 @@ interface Props {
   platform?: GroupPlatform // Optional platform filter
   mixedScheduling?: boolean // For antigravity accounts: allow anthropic/gemini groups
   searchable?: boolean | 'auto'
+  label?: string
+  hint?: string
 }
 
 const props = withDefaults(defineProps<Props>(), {
+  modelValue: () => [],
+  groups: () => [],
   searchable: 'auto'
 })
 const emit = defineEmits<{
