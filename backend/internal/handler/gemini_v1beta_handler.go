@@ -186,6 +186,15 @@ func (h *GatewayHandler) GeminiV1BetaModels(c *gin.Context) {
 
 	setOpsRequestContext(c, modelName, stream)
 	setOpsEndpointContext(c, "", int16(service.RequestTypeFromLegacy(stream, false)))
+	if userPrivacyFilterEnabled(apiKey) {
+		filteredBody, applyErr := applyUserPrivacyFilterBody(c.Request.Context(), reqLog, apiKey, service.ContentModerationProtocolGemini, body, h.privacyFilterClient, gatewayPrivacyFilterFailClosed(h.cfg))
+		if applyErr != nil {
+			googleError(c, applyErr.status, privacyFilterApplyErrorMessage(applyErr))
+			return
+		}
+		body = filteredBody
+		resetRequestBody(c, body)
+	}
 
 	if decision := h.checkContentModeration(c, reqLog, apiKey, authSubject, service.ContentModerationProtocolGemini, modelName, body); decision != nil && decision.Blocked {
 		googleError(c, contentModerationStatus(decision), decision.Message)

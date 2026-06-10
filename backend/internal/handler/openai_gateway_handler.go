@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -34,6 +35,7 @@ type OpenAIGatewayHandler struct {
 	usageRecordWorkerPool    *service.UsageRecordWorkerPool
 	errorPassthroughService  *service.ErrorPassthroughService
 	contentModerationService *service.ContentModerationService
+	privacyFilterClient      service.PrivacyFilterClient
 	concurrencyHelper        *ConcurrencyHelper
 	imageLimiter             *imageConcurrencyLimiter
 	maxAccountSwitches       int
@@ -98,6 +100,7 @@ func NewOpenAIGatewayHandler(
 		usageRecordWorkerPool:    usageRecordWorkerPool,
 		errorPassthroughService:  errorPassthroughService,
 		contentModerationService: contentModerationService,
+		privacyFilterClient:      newGatewayPrivacyFilterClient(cfg),
 		concurrencyHelper:        NewConcurrencyHelper(concurrencyService, SSEPingFormatComment, pingInterval),
 		imageLimiter:             &imageConcurrencyLimiter{},
 		maxAccountSwitches:       maxAccountSwitches,
@@ -216,6 +219,28 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 
 	setOpsRequestContext(c, reqModel, reqStream)
 	setOpsEndpointContext(c, "", int16(service.RequestTypeFromLegacy(reqStream, false)))
+
+	if userPrivacyFilterEnabled(apiKey) {
+		filteredBody, applyErr := applyUserPrivacyFilterBody(c.Request.Context(), reqLog, apiKey, service.ContentModerationProtocolOpenAIResponses, body, h.privacyFilterClient, gatewayPrivacyFilterFailClosed(h.cfg))
+		if applyErr != nil {
+			h.errorResponse(c, applyErr.status, applyErr.code, privacyFilterApplyErrorMessage(applyErr))
+			return
+		}
+		body = filteredBody
+		resetRequestBody(c, body)
+		modelResult = gjson.GetBytes(body, "model")
+		if !modelResult.Exists() || modelResult.Type != gjson.String || modelResult.String() == "" {
+			h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "model is required")
+			return
+		}
+		reqModel = modelResult.String()
+		reqStream, ok = parseOpenAICompatibleStream(body)
+		if !ok {
+			h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", invalidStreamFieldTypeMessage)
+			return
+		}
+		sessionHashBody = body
+	}
 
 	if decision := h.checkContentModeration(c, reqLog, apiKey, subject, service.ContentModerationProtocolOpenAIResponses, reqModel, body); decision != nil && decision.Blocked {
 		h.errorResponse(c, contentModerationStatus(decision), contentModerationErrorCode(decision), decision.Message)
@@ -652,6 +677,24 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 
 	setOpsRequestContext(c, reqModel, reqStream)
 	setOpsEndpointContext(c, "", int16(service.RequestTypeFromLegacy(reqStream, false)))
+	if userPrivacyFilterEnabled(apiKey) {
+		filteredBody, applyErr := applyUserPrivacyFilterBody(c.Request.Context(), reqLog, apiKey, service.ContentModerationProtocolAnthropicMessages, body, h.privacyFilterClient, gatewayPrivacyFilterFailClosed(h.cfg))
+		if applyErr != nil {
+			h.anthropicErrorResponse(c, applyErr.status, applyErr.code, privacyFilterApplyErrorMessage(applyErr))
+			return
+		}
+		body = filteredBody
+		resetRequestBody(c, body)
+		modelResult = gjson.GetBytes(body, "model")
+		if !modelResult.Exists() || modelResult.Type != gjson.String || modelResult.String() == "" {
+			h.anthropicErrorResponse(c, http.StatusBadRequest, "invalid_request_error", "model is required")
+			return
+		}
+		reqModel = modelResult.String()
+		routingModel = service.NormalizeOpenAICompatRequestedModel(reqModel)
+		preferredMappedModel = resolveOpenAIMessagesDispatchMappedModel(apiKey, reqModel)
+		reqStream = gjson.GetBytes(body, "stream").Bool()
+	}
 
 	if decision := h.checkContentModeration(c, reqLog, apiKey, subject, service.ContentModerationProtocolAnthropicMessages, reqModel, body); decision != nil && decision.Blocked {
 		h.anthropicErrorResponse(c, contentModerationStatus(decision), contentModerationErrorCode(decision), decision.Message)
@@ -1210,6 +1253,15 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 		return
 	}
 
+	if userPrivacyFilterEnabled(apiKey) {
+		filteredFirstMessage, applyErr := applyUserPrivacyFilterBody(ctx, reqLog, apiKey, service.ContentModerationProtocolOpenAIResponses, firstMessage, h.privacyFilterClient, gatewayPrivacyFilterFailClosed(h.cfg))
+		if applyErr != nil {
+			closeOpenAIClientWS(wsConn, coderws.StatusPolicyViolation, privacyFilterApplyErrorMessage(applyErr))
+			return
+		}
+		firstMessage = filteredFirstMessage
+	}
+
 	reqModel := strings.TrimSpace(gjson.GetBytes(firstMessage, "model").String())
 	if reqModel == "" {
 		closeOpenAIClientWS(wsConn, coderws.StatusPolicyViolation, "model is required in first response.create payload")
@@ -1391,25 +1443,38 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 		var requestPayloadHash string
 		hooks := &service.OpenAIWSIngressHooks{
 			InitialRequestModel: reqModel,
-			BeforeRequest: func(turn int, payload []byte, originalModel string) error {
+			BeforeRequest: func(turn int, payload []byte, originalModel string) ([]byte, error) {
 				if turn == 1 {
-					return nil
+					return nil, nil
 				}
 				if !gjson.ValidBytes(payload) {
-					return service.NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, "invalid websocket request payload", errors.New("invalid json"))
+					return nil, service.NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, "invalid websocket request payload", errors.New("invalid json"))
 				}
+
+				checkedPayload := payload
+				if userPrivacyFilterEnabled(apiKey) {
+					filteredPayload, applyErr := applyUserPrivacyFilterBody(ctx, reqLog, apiKey, service.ContentModerationProtocolOpenAIResponses, payload, h.privacyFilterClient, gatewayPrivacyFilterFailClosed(h.cfg))
+					if applyErr != nil {
+						return nil, service.NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, privacyFilterApplyErrorMessage(applyErr), applyErr.err)
+					}
+					checkedPayload = filteredPayload
+				}
+
 				model := strings.TrimSpace(originalModel)
 				if model == "" {
-					model = strings.TrimSpace(gjson.GetBytes(payload, "model").String())
+					model = strings.TrimSpace(gjson.GetBytes(checkedPayload, "model").String())
 				}
 				if model == "" {
 					model = reqModel
 				}
-				if decision := h.checkContentModeration(c, reqLog, apiKey, subject, service.ContentModerationProtocolOpenAIResponses, model, payload); decision != nil && decision.Blocked {
+				if decision := h.checkContentModeration(c, reqLog, apiKey, subject, service.ContentModerationProtocolOpenAIResponses, model, checkedPayload); decision != nil && decision.Blocked {
 					writeContentModerationWSError(ctx, wsConn, decision)
-					return service.NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, decision.Message, nil)
+					return nil, service.NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, decision.Message, nil)
 				}
-				return nil
+				if !bytes.Equal(checkedPayload, payload) {
+					return checkedPayload, nil
+				}
+				return nil, nil
 			},
 			BeforeTurn: func(turn int) error {
 				if turn == 1 {

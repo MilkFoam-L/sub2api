@@ -48,6 +48,7 @@ type GatewayHandler struct {
 	usageRecordWorkerPool     *service.UsageRecordWorkerPool
 	errorPassthroughService   *service.ErrorPassthroughService
 	contentModerationService  *service.ContentModerationService
+	privacyFilterClient       service.PrivacyFilterClient
 	concurrencyHelper         *ConcurrencyHelper
 	userMsgQueueHelper        *UserMsgQueueHelper
 	maxAccountSwitches        int
@@ -103,6 +104,7 @@ func NewGatewayHandler(
 		usageRecordWorkerPool:     usageRecordWorkerPool,
 		errorPassthroughService:   errorPassthroughService,
 		contentModerationService:  contentModerationService,
+		privacyFilterClient:       newGatewayPrivacyFilterClient(cfg),
 		concurrencyHelper:         NewConcurrencyHelper(concurrencyService, SSEPingFormatClaude, pingInterval),
 		userMsgQueueHelper:        umqHelper,
 		maxAccountSwitches:        maxAccountSwitches,
@@ -193,6 +195,24 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 	if reqModel == "" {
 		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "model is required")
 		return
+	}
+
+	if userPrivacyFilterEnabled(apiKey) {
+		filteredBody, applyErr := applyUserPrivacyFilterBody(c.Request.Context(), reqLog, apiKey, service.ContentModerationProtocolAnthropicMessages, body, h.privacyFilterClient, gatewayPrivacyFilterFailClosed(h.cfg))
+		if applyErr != nil {
+			h.errorResponse(c, applyErr.status, applyErr.code, privacyFilterApplyErrorMessage(applyErr))
+			return
+		}
+		body = filteredBody
+		resetRequestBody(c, body)
+		bodyRef = service.NewRequestBodyRef(body)
+		parsedReq, err = service.ParseGatewayRequest(bodyRef, domain.PlatformAnthropic)
+		if err != nil {
+			h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Failed to parse request body")
+			return
+		}
+		reqModel = parsedReq.Model
+		reqStream = parsedReq.Stream
 	}
 
 	if decision := h.checkContentModeration(c, reqLog, apiKey, subject, service.ContentModerationProtocolAnthropicMessages, reqModel, body); decision != nil && decision.Blocked {
@@ -1714,6 +1734,21 @@ func (h *GatewayHandler) CountTokens(c *gin.Context) {
 	if err != nil {
 		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Failed to parse request body")
 		return
+	}
+	if userPrivacyFilterEnabled(apiKey) {
+		filteredBody, applyErr := applyUserPrivacyFilterBody(c.Request.Context(), reqLog, apiKey, service.ContentModerationProtocolAnthropicMessages, body, h.privacyFilterClient, gatewayPrivacyFilterFailClosed(h.cfg))
+		if applyErr != nil {
+			h.errorResponse(c, applyErr.status, applyErr.code, privacyFilterApplyErrorMessage(applyErr))
+			return
+		}
+		body = filteredBody
+		bodyRef.Replace(body)
+		resetRequestBody(c, body)
+		parsedReq, err = service.ParseGatewayRequest(bodyRef, domain.PlatformAnthropic)
+		if err != nil {
+			h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Failed to parse request body")
+			return
+		}
 	}
 	// count_tokens 走 messages 严格校验时，复用已解析请求，避免二次反序列化。
 	SetClaudeCodeClientContext(c, body, parsedReq)

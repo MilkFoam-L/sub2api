@@ -74,6 +74,25 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 		return
 	}
 	requestModel := parsed.Model
+	if userPrivacyFilterEnabled(apiKey) {
+		if parsed.Multipart {
+			h.errorResponse(c, http.StatusServiceUnavailable, "privacy_filter_error", "隐私过滤暂不支持 multipart 图片请求，请使用 JSON 请求或关闭隐私过滤后重试")
+			return
+		}
+		filteredBody, applyErr := applyUserPrivacyFilterBody(c.Request.Context(), reqLog, apiKey, service.ContentModerationProtocolOpenAIImages, body, h.privacyFilterClient, gatewayPrivacyFilterFailClosed(h.cfg))
+		if applyErr != nil {
+			h.errorResponse(c, applyErr.status, applyErr.code, privacyFilterApplyErrorMessage(applyErr))
+			return
+		}
+		body = filteredBody
+		resetRequestBody(c, body)
+		parsed, err = h.gatewayService.ParseOpenAIImagesRequest(c, body)
+		if err != nil {
+			h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", err.Error())
+			return
+		}
+		requestModel = parsed.Model
+	}
 
 	reqLog = reqLog.With(
 		zap.String("model", requestModel),

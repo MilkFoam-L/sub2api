@@ -84,6 +84,26 @@ func (h *GatewayHandler) ChatCompletions(c *gin.Context) {
 
 	setOpsRequestContext(c, reqModel, reqStream)
 	setOpsEndpointContext(c, "", int16(service.RequestTypeFromLegacy(reqStream, false)))
+	if userPrivacyFilterEnabled(apiKey) {
+		filteredBody, applyErr := applyUserPrivacyFilterBody(c.Request.Context(), reqLog, apiKey, service.ContentModerationProtocolOpenAIChat, body, h.privacyFilterClient, gatewayPrivacyFilterFailClosed(h.cfg))
+		if applyErr != nil {
+			h.chatCompletionsErrorResponse(c, applyErr.status, applyErr.code, privacyFilterApplyErrorMessage(applyErr))
+			return
+		}
+		body = filteredBody
+		resetRequestBody(c, body)
+		modelResult = gjson.GetBytes(body, "model")
+		if !modelResult.Exists() || modelResult.Type != gjson.String || modelResult.String() == "" {
+			h.chatCompletionsErrorResponse(c, http.StatusBadRequest, "invalid_request_error", "model is required")
+			return
+		}
+		reqModel = modelResult.String()
+		reqStream, ok = parseOpenAICompatibleStream(body)
+		if !ok {
+			h.chatCompletionsErrorResponse(c, http.StatusBadRequest, "invalid_request_error", invalidStreamFieldTypeMessage)
+			return
+		}
+	}
 
 	// 解析渠道级模型映射
 	channelMapping, _ := h.gatewayService.ResolveChannelMappingAndRestrict(c.Request.Context(), apiKey.GroupID, reqModel)

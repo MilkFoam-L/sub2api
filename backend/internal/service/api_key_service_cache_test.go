@@ -242,11 +242,12 @@ func TestAPIKeyService_SnapshotRoundTrip_PreservesMessagesDispatchModelConfig(t 
 		Name:    "Audit Key",
 		Status:  StatusActive,
 		User: &User{
-			ID:          2,
-			Status:      StatusActive,
-			Role:        RoleUser,
-			Balance:     10,
-			Concurrency: 3,
+			ID:                   2,
+			Status:               StatusActive,
+			Role:                 RoleUser,
+			Balance:              10,
+			Concurrency:          3,
+			PrivacyFilterEnabled: true,
 		},
 		Group: &Group{
 			ID:                    groupID,
@@ -273,6 +274,8 @@ func TestAPIKeyService_SnapshotRoundTrip_PreservesMessagesDispatchModelConfig(t 
 
 	require.NotNil(t, roundTrip)
 	require.Equal(t, apiKey.Name, roundTrip.Name)
+	require.NotNil(t, roundTrip.User)
+	require.True(t, roundTrip.User.PrivacyFilterEnabled)
 	require.NotNil(t, roundTrip.Group)
 	require.Equal(t, apiKey.Group.MessagesDispatchModelConfig, roundTrip.Group.MessagesDispatchModelConfig)
 }

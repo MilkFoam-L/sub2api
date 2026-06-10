@@ -170,6 +170,11 @@ func RpmLimit(v int) predicate.User {
 	return predicate.User(sql.FieldEQ(FieldRpmLimit, v))
 }
 
+// PrivacyFilterEnabled applies equality check predicate on the "privacy_filter_enabled" field. It's identical to PrivacyFilterEnabledEQ.
+func PrivacyFilterEnabled(v bool) predicate.User {
+	return predicate.User(sql.FieldEQ(FieldPrivacyFilterEnabled, v))
+}
+
 // CreatedAtEQ applies the EQ predicate on the "created_at" field.
 func CreatedAtEQ(v time.Time) predicate.User {
 	return predicate.User(sql.FieldEQ(FieldCreatedAt, v))
@@ -1338,6 +1343,16 @@ func RpmLimitLT(v int) predicate.User {
 // RpmLimitLTE applies the LTE predicate on the "rpm_limit" field.
 func RpmLimitLTE(v int) predicate.User {
 	return predicate.User(sql.FieldLTE(FieldRpmLimit, v))
+}
+
+// PrivacyFilterEnabledEQ applies the EQ predicate on the "privacy_filter_enabled" field.
+func PrivacyFilterEnabledEQ(v bool) predicate.User {
+	return predicate.User(sql.FieldEQ(FieldPrivacyFilterEnabled, v))
+}
+
+// PrivacyFilterEnabledNEQ applies the NEQ predicate on the "privacy_filter_enabled" field.
+func PrivacyFilterEnabledNEQ(v bool) predicate.User {
+	return predicate.User(sql.FieldNEQ(FieldPrivacyFilterEnabled, v))
 }
 
 // HasAPIKeys applies the HasEdge predicate on the "api_keys" edge.

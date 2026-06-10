@@ -88,6 +88,7 @@ export interface User {
   balance: number // User balance for API usage
   concurrency: number // Allowed concurrent requests
   rpm_limit?: number // User-level RPM cap (0 = unlimited); effective as fallback when group has no rpm_limit
+  privacy_filter_enabled?: boolean // Per-user privacy filter opt-in
   status: 'active' | 'disabled' // Account status
   allowed_groups: number[] | null // Allowed group IDs (null = all non-exclusive groups)
   balance_notify_enabled: boolean

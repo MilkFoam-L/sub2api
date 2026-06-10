@@ -69,6 +69,28 @@ func (h *OpenAIGatewayHandler) Embeddings(c *gin.Context) {
 		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "model is required")
 		return
 	}
+
+	if filteredBody, applyErr := applyUserPrivacyFilterBody(
+		c.Request.Context(),
+		reqLog,
+		apiKey,
+		service.ContentModerationProtocolOpenAIEmbeddings,
+		body,
+		h.privacyFilterClient,
+		gatewayPrivacyFilterFailClosed(h.cfg),
+	); applyErr != nil {
+		h.errorResponse(c, applyErr.status, applyErr.code, privacyFilterApplyErrorMessage(applyErr))
+		return
+	} else {
+		body = filteredBody
+		resetRequestBody(c, body)
+		modelResult = gjson.GetBytes(body, "model")
+		if !modelResult.Exists() || modelResult.Type != gjson.String || strings.TrimSpace(modelResult.String()) == "" {
+			h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "model is required")
+			return
+		}
+	}
+
 	reqModel := modelResult.String()
 	reqLog = reqLog.With(zap.String("model", reqModel))
 	setOpsRequestContext(c, reqModel, false)

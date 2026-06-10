@@ -61,6 +61,8 @@ const (
 	FieldTotalRecharged = "total_recharged"
 	// FieldRpmLimit holds the string denoting the rpm_limit field in the database.
 	FieldRpmLimit = "rpm_limit"
+	// FieldPrivacyFilterEnabled holds the string denoting the privacy_filter_enabled field in the database.
+	FieldPrivacyFilterEnabled = "privacy_filter_enabled"
 	// EdgeAPIKeys holds the string denoting the api_keys edge name in mutations.
 	EdgeAPIKeys = "api_keys"
 	// EdgeRedeemCodes holds the string denoting the redeem_codes edge name in mutations.
@@ -215,6 +217,7 @@ var Columns = []string{
 	FieldBalanceNotifyExtraEmails,
 	FieldTotalRecharged,
 	FieldRpmLimit,
+	FieldPrivacyFilterEnabled,
 }
 
 var (
@@ -285,6 +288,8 @@ var (
 	DefaultTotalRecharged float64
 	// DefaultRpmLimit holds the default value on creation for the "rpm_limit" field.
 	DefaultRpmLimit int
+	// DefaultPrivacyFilterEnabled holds the default value on creation for the "privacy_filter_enabled" field.
+	DefaultPrivacyFilterEnabled bool
 )
 
 // OrderOption defines the ordering options for the User queries.
@@ -408,6 +413,11 @@ func ByTotalRecharged(opts ...sql.OrderTermOption) OrderOption {
 // ByRpmLimit orders the results by the rpm_limit field.
 func ByRpmLimit(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldRpmLimit, opts...).ToFunc()
+}
+
+// ByPrivacyFilterEnabled orders the results by the privacy_filter_enabled field.
+func ByPrivacyFilterEnabled(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldPrivacyFilterEnabled, opts...).ToFunc()
 }
 
 // ByAPIKeysCount orders the results by api_keys count.

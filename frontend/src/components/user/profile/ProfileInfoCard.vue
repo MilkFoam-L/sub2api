@@ -115,7 +115,7 @@
             </div>
           </div>
 
-          <div class="grid gap-6 sm:grid-cols-1 md:grid-cols-2">
+          <div class="grid gap-6 sm:grid-cols-1 lg:grid-cols-3">
             <div class="rounded-3xl border border-gray-100 bg-gray-50/80 p-5 dark:border-dark-700 dark:bg-dark-900/30">
               <ProfileAvatarCard
                 :user="user"
@@ -128,6 +128,10 @@
                 :initial-username="user?.username || ''"
                 embedded
               />
+            </div>
+
+            <div class="rounded-3xl border border-gray-100 bg-gray-50/80 p-5 dark:border-dark-700 dark:bg-dark-900/30">
+              <ProfilePrivacyFilterCard :user="user" />
             </div>
           </div>
         </section>
@@ -186,6 +190,7 @@ import Icon from '@/components/icons/Icon.vue'
 import ProfileAvatarCard from '@/components/user/profile/ProfileAvatarCard.vue'
 import ProfileEditForm from '@/components/user/profile/ProfileEditForm.vue'
 import ProfileIdentityBindingsSection from '@/components/user/profile/ProfileIdentityBindingsSection.vue'
+import ProfilePrivacyFilterCard from '@/components/user/profile/ProfilePrivacyFilterCard.vue'
 import type { User, UserAuthBindingStatus, UserAuthProvider, UserProfileSourceContext } from '@/types'
 
 const props = withDefaults(defineProps<{

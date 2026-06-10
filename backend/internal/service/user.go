@@ -54,6 +54,9 @@ type User struct {
 	// 且该 (用户, 分组) 无 rpm_override 时作为全局兜底生效，计数键 rpm:u:{userID}:{min}。
 	RPMLimit int
 
+	// PrivacyFilterEnabled 用户级隐私过滤保护开关。开启后网关请求会先经 privacy-filter 脱敏。
+	PrivacyFilterEnabled bool
+
 	// UserGroupRPMOverride 来自 auth cache snapshot 的 (user, group) RPM 覆盖值。
 	// nil = 该 API Key 对应的 (user, group) 无 override；非 nil 时 checkRPM 直接使用，
 	// 避免每请求查 DB。字段不持久化到数据库。

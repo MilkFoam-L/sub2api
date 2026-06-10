@@ -84,6 +84,26 @@ func (h *GatewayHandler) Responses(c *gin.Context) {
 
 	setOpsRequestContext(c, reqModel, reqStream)
 	setOpsEndpointContext(c, "", int16(service.RequestTypeFromLegacy(reqStream, false)))
+	if userPrivacyFilterEnabled(apiKey) {
+		filteredBody, applyErr := applyUserPrivacyFilterBody(c.Request.Context(), reqLog, apiKey, service.ContentModerationProtocolOpenAIResponses, body, h.privacyFilterClient, gatewayPrivacyFilterFailClosed(h.cfg))
+		if applyErr != nil {
+			h.responsesErrorResponse(c, applyErr.status, applyErr.code, privacyFilterApplyErrorMessage(applyErr))
+			return
+		}
+		body = filteredBody
+		resetRequestBody(c, body)
+		modelResult = gjson.GetBytes(body, "model")
+		if !modelResult.Exists() || modelResult.Type != gjson.String || modelResult.String() == "" {
+			h.responsesErrorResponse(c, http.StatusBadRequest, "invalid_request_error", "model is required")
+			return
+		}
+		reqModel = modelResult.String()
+		reqStream, ok = parseOpenAICompatibleStream(body)
+		if !ok {
+			h.responsesErrorResponse(c, http.StatusBadRequest, "invalid_request_error", invalidStreamFieldTypeMessage)
+			return
+		}
+	}
 	requestCtx := c.Request.Context()
 	if service.IsImageGenerationIntent("/v1/responses", reqModel, body) {
 		requestCtx = service.WithOpenAIImageGenerationIntent(requestCtx)

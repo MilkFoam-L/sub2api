@@ -51,6 +51,7 @@ const (
 	ContentModerationProtocolAnthropicMessages = "anthropic_messages"
 	ContentModerationProtocolOpenAIResponses   = "openai_responses"
 	ContentModerationProtocolOpenAIChat        = "openai_chat_completions"
+	ContentModerationProtocolOpenAIEmbeddings  = "openai_embeddings"
 	ContentModerationProtocolGemini            = "gemini"
 	ContentModerationProtocolOpenAIImages      = "openai_images"
 

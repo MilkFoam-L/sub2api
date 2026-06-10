@@ -763,6 +763,8 @@ type GatewayConfig struct {
 	// 等待上游 compact 响应期间，按此间隔向下游写 \n 并 flush，防止反代/CDN 空闲超时断连。
 	// 0 表示禁用；非 0 时必须为 5-60。
 	OpenAICompactNonstreamKeepaliveInterval int `mapstructure:"openai_compact_nonstream_keepalive_interval"`
+	// PrivacyFilter: 用户级隐私过滤后端配置。
+	PrivacyFilter GatewayPrivacyFilterConfig `mapstructure:"privacy_filter"`
 	// OpenAIWS: OpenAI Responses WebSocket 配置（默认开启，可按需回滚到 HTTP）
 	OpenAIWS GatewayOpenAIWSConfig `mapstructure:"openai_ws"`
 	// OpenAIScheduler: OpenAI 高级调度器粘性逃逸配置
@@ -845,6 +847,16 @@ type GatewayConfig struct {
 	// UserMessageQueue: 用户消息串行队列配置
 	// 对 role:"user" 的真实用户消息实施账号级串行化 + RPM 自适应延迟
 	UserMessageQueue UserMessageQueueConfig `mapstructure:"user_message_queue"`
+}
+
+// GatewayPrivacyFilterConfig 用户级隐私过滤后端配置。
+type GatewayPrivacyFilterConfig struct {
+	// BaseURL: privacy-filter HTTP 服务地址。
+	BaseURL string `mapstructure:"base_url"`
+	// TimeoutMS: 调用 privacy-filter 的超时时间（毫秒）。
+	TimeoutMS int `mapstructure:"timeout_ms"`
+	// FailClosed: 过滤失败时是否阻止原文继续转发。
+	FailClosed bool `mapstructure:"fail_closed"`
 }
 
 // GatewayOpenAIHTTP2Config OpenAI HTTP 上游协议配置。
@@ -1890,6 +1902,9 @@ func setDefaults() {
 	viper.SetDefault("gateway.openai_images_responses_reasoning_effort", OpenAIImagesResponsesReasoningEffortDefault)
 	viper.SetDefault("gateway.openai_passthrough_allow_timeout_headers", false)
 	viper.SetDefault("gateway.openai_compact_nonstream_keepalive_interval", 0)
+	viper.SetDefault("gateway.privacy_filter.base_url", "http://127.0.0.1:8088")
+	viper.SetDefault("gateway.privacy_filter.timeout_ms", 250)
+	viper.SetDefault("gateway.privacy_filter.fail_closed", true)
 	// OpenAI Responses WebSocket（默认开启；可通过 force_http 紧急回滚）
 	viper.SetDefault("gateway.openai_ws.enabled", true)
 	viper.SetDefault("gateway.openai_ws.mode_router_v2_enabled", false)
@@ -2532,6 +2547,12 @@ func (c *Config) Validate() error {
 	if c.Gateway.OpenAICompactNonstreamKeepaliveInterval != 0 &&
 		(c.Gateway.OpenAICompactNonstreamKeepaliveInterval < 5 || c.Gateway.OpenAICompactNonstreamKeepaliveInterval > 60) {
 		return fmt.Errorf("gateway.openai_compact_nonstream_keepalive_interval must be 0 or between 5-60 seconds")
+	}
+	if strings.TrimSpace(c.Gateway.PrivacyFilter.BaseURL) == "" {
+		return fmt.Errorf("gateway.privacy_filter.base_url must not be empty")
+	}
+	if c.Gateway.PrivacyFilter.TimeoutMS <= 0 || c.Gateway.PrivacyFilter.TimeoutMS > 5000 {
+		return fmt.Errorf("gateway.privacy_filter.timeout_ms must be between 1 and 5000 milliseconds")
 	}
 	if strings.TrimSpace(c.Gateway.ConnectionPoolIsolation) != "" {
 		switch c.Gateway.ConnectionPoolIsolation {
