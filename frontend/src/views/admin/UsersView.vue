@@ -741,8 +741,8 @@
     />
     <UserApiKeysModal :show="showApiKeysModal" :user="viewingUser" @close="closeApiKeysModal" />
     <UserAllowedGroupsModal :show="showAllowedGroupsModal" :user="allowedGroupsUser" @close="closeAllowedGroupsModal" @success="loadUsers" />
-    <UserBalanceModal :show="showBalanceModal" :user="balanceUser" :operation="balanceOperation" @close="closeBalanceModal" @success="loadUsers" />
-    <UserBalanceHistoryModal :show="showBalanceHistoryModal" :user="balanceHistoryUser" @close="closeBalanceHistoryModal" @deposit="handleDepositFromHistory" @withdraw="handleWithdrawFromHistory" />
+    <UserBalanceModal :show="showBalanceModal" :user="balanceUser" :operation="balanceOperation" @close="closeBalanceModal" @success="handleBalanceSuccess" />
+    <UserBalanceHistoryModal :show="showBalanceHistoryModal" :user="balanceHistoryUser" :refresh-key="balanceHistoryRefreshKey" @close="closeBalanceHistoryModal" @deposit="handleDepositFromHistory" @withdraw="handleWithdrawFromHistory" />
     <GroupReplaceModal :show="showGroupReplaceModal" :user="groupReplaceUser" :old-group="groupReplaceOldGroup" :all-groups="allGroups" @close="closeGroupReplaceModal" @success="loadUsers" />
     <UserAttributesConfigModal :show="showAttributesModal" @close="handleAttributesModalClose" />
   </AppLayout>
@@ -1486,6 +1486,7 @@ const balanceOperation = ref<'add' | 'subtract'>('add')
 // Balance History modal state
 const showBalanceHistoryModal = ref(false)
 const balanceHistoryUser = ref<AdminUser | null>(null)
+const balanceHistoryRefreshKey = ref(0)
 
 // 计算剩余天数
 const getDaysRemaining = (expiresAt: string): number => {
@@ -1745,6 +1746,18 @@ const handleWithdraw = (user: AdminUser) => {
 const closeBalanceModal = () => {
   showBalanceModal.value = false
   balanceUser.value = null
+}
+
+const handleBalanceSuccess = (updatedUser: AdminUser) => {
+  const idx = users.value.findIndex((user) => user.id === updatedUser.id)
+  if (idx >= 0) {
+    users.value[idx] = { ...users.value[idx], ...updatedUser }
+  }
+  if (balanceHistoryUser.value?.id === updatedUser.id) {
+    balanceHistoryUser.value = { ...balanceHistoryUser.value, ...updatedUser }
+    balanceHistoryRefreshKey.value += 1
+  }
+  loadUsers()
 }
 
 const handleBalanceHistory = (user: AdminUser) => {

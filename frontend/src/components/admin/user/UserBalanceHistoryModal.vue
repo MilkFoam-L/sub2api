@@ -181,7 +181,12 @@ import BaseDialog from '@/components/common/BaseDialog.vue'
 import Select from '@/components/common/Select.vue'
 import Icon from '@/components/icons/Icon.vue'
 
-const props = defineProps<{ show: boolean; user: AdminUser | null; hideActions?: boolean }>()
+const props = defineProps<{
+  show: boolean
+  user: AdminUser | null
+  hideActions?: boolean
+  refreshKey?: number
+}>()
 const emit = defineEmits(['close', 'deposit', 'withdraw'])
 const { t } = useI18n()
 
@@ -210,6 +215,12 @@ const typeOptions = computed(() => [
 watch(() => props.show, (v) => {
   if (v && props.user) {
     typeFilter.value = ''
+    loadHistory(1)
+  }
+})
+
+watch(() => props.refreshKey, () => {
+  if (props.show && props.user) {
     loadHistory(1)
   }
 })
