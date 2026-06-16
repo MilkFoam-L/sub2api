@@ -160,7 +160,10 @@ describe('AccountStatusIndicator', () => {
     expect(wrapper.text()).toContain('admin.accounts.status.creditsExhausted')
   })
 
-  it('上游余额不足错误态显示专用状态，不再显示普通错误', () => {
+  it.each([
+    ['INSUFFICIENT_BALANCE', 'Upstream no balance (INSUFFICIENT_BALANCE): Insufficient account balance'],
+    ['newapi insufficient_user_quota', 'API returned 403: {"error":{"message":"用户额度不足, 剩余额度: ＄-0.003692 (request id: 20260611051811537367248268d9d6dhOaW53P)","type":"new_api_error","param":"","code":"insufficient_user_quota"}}']
+  ])('上游余额不足错误态显示专用状态，不再显示普通错误：%s', (_name, errorMessage) => {
     const wrapper = mount(AccountStatusIndicator, {
       props: {
         account: makeAccount({
@@ -170,7 +173,7 @@ describe('AccountStatusIndicator', () => {
           type: 'apikey',
           status: 'error',
           schedulable: false,
-          error_message: 'Upstream no balance (INSUFFICIENT_BALANCE): Insufficient account balance'
+          error_message: errorMessage
         })
       },
       global: {

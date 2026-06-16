@@ -88,31 +88,55 @@ func TestRateLimitService_HandleUpstreamError_OpenAI403ThresholdDisables(t *test
 }
 
 func TestRateLimitService_HandleUpstreamError_OpenAIInsufficientBalanceDisablesPoolModeAccount(t *testing.T) {
-	repo := &rateLimitAccountRepoStub{}
-	service := NewRateLimitService(repo, nil, &config.Config{}, nil, nil)
-	account := &Account{
-		ID:       303,
-		Platform: PlatformOpenAI,
-		Type:     AccountTypeAPIKey,
-		Status:   StatusActive,
-		Credentials: map[string]any{
-			"pool_mode": true,
+	tests := []struct {
+		name                string
+		body                []byte
+		expectedCodeSnippet string
+		expectedMsgSnippet  string
+	}{
+		{
+			name:                "claude_insufficient_balance_code",
+			body:                []byte(`{"code":"INSUFFICIENT_BALANCE","message":"Insufficient account balance"}`),
+			expectedCodeSnippet: "INSUFFICIENT_BALANCE",
+			expectedMsgSnippet:  "Insufficient account balance",
 		},
-		Schedulable: true,
+		{
+			name:                "newapi_insufficient_user_quota_code",
+			body:                []byte(`{"error":{"message":"用户额度不足, 剩余额度: ＄-0.003692 (request id: 20260611051811537367248268d9d6dhOaW53P)","type":"new_api_error","param":"","code":"insufficient_user_quota"}}`),
+			expectedCodeSnippet: "INSUFFICIENT_BALANCE",
+			expectedMsgSnippet:  "用户额度不足",
+		},
 	}
 
-	shouldDisable := service.HandleUpstreamError(
-		context.Background(),
-		account,
-		http.StatusForbidden,
-		http.Header{},
-		[]byte(`{"code":"INSUFFICIENT_BALANCE","message":"Insufficient account balance"}`),
-	)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			repo := &rateLimitAccountRepoStub{}
+			service := NewRateLimitService(repo, nil, &config.Config{}, nil, nil)
+			account := &Account{
+				ID:       303,
+				Platform: PlatformOpenAI,
+				Type:     AccountTypeAPIKey,
+				Status:   StatusActive,
+				Credentials: map[string]any{
+					"pool_mode": true,
+				},
+				Schedulable: true,
+			}
 
-	require.True(t, shouldDisable)
-	require.Equal(t, 1, repo.setErrorCalls)
-	require.Equal(t, 0, repo.tempCalls)
-	require.Contains(t, repo.lastErrorMsg, "Upstream no balance")
-	require.Contains(t, repo.lastErrorMsg, "INSUFFICIENT_BALANCE")
-	require.Contains(t, repo.lastErrorMsg, "Insufficient account balance")
+			shouldDisable := service.HandleUpstreamError(
+				context.Background(),
+				account,
+				http.StatusForbidden,
+				http.Header{},
+				tt.body,
+			)
+
+			require.True(t, shouldDisable)
+			require.Equal(t, 1, repo.setErrorCalls)
+			require.Equal(t, 0, repo.tempCalls)
+			require.Contains(t, repo.lastErrorMsg, "Upstream no balance")
+			require.Contains(t, repo.lastErrorMsg, tt.expectedCodeSnippet)
+			require.Contains(t, repo.lastErrorMsg, tt.expectedMsgSnippet)
+		})
+	}
 }

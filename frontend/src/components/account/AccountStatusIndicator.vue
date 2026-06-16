@@ -291,7 +291,7 @@ const hasError = computed(() => {
 
 const hasUpstreamNoBalance = computed(() => {
   if (!hasError.value || !props.account.error_message) return false
-  return /INSUFFICIENT_BALANCE|Upstream no balance/i.test(props.account.error_message)
+  return /INSUFFICIENT_BALANCE|insufficient_user_quota|Upstream no balance/i.test(props.account.error_message)
 })
 
 const isQuotaExceeded = computed(() => {
