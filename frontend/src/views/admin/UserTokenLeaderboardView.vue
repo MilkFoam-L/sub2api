@@ -73,16 +73,15 @@ const formatLocalDate = (date: Date) => {
   return `${year}-${month}-${day}`
 }
 
-const getLast24HoursRangeDates = (): { start: string; end: string } => {
-  const end = new Date()
-  const start = new Date(end.getTime() - 24 * 60 * 60 * 1000)
+const getTodayRangeDates = (): { start: string; end: string } => {
+  const today = formatLocalDate(new Date())
   return {
-    start: formatLocalDate(start),
-    end: formatLocalDate(end)
+    start: today,
+    end: today
   }
 }
 
-const defaultRange = getLast24HoursRangeDates()
+const defaultRange = getTodayRangeDates()
 const startDate = ref(defaultRange.start)
 const endDate = ref(defaultRange.end)
 const filters = ref<AdminUsageQueryParams>({
@@ -151,7 +150,7 @@ const loadRanking = async () => {
 }
 
 const resetFilters = () => {
-  const range = getLast24HoursRangeDates()
+  const range = getTodayRangeDates()
   startDate.value = range.start
   endDate.value = range.end
   filters.value = {
