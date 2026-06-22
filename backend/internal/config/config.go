@@ -1015,6 +1015,9 @@ type GatewayOpenAIWSSchedulerScoreWeights struct {
 	Queue     float64 `mapstructure:"queue"`
 	ErrorRate float64 `mapstructure:"error_rate"`
 	TTFT      float64 `mapstructure:"ttft"`
+	// Reset 倾向「会话窗口最早重置」的账号（use-it-or-lose-it）。
+	// >0 时，剩余重置时间越短的账号得分越高，从而被优先用尽。默认 0（关闭，不改变原有行为）。
+	Reset float64 `mapstructure:"reset"`
 }
 
 // GatewayOpenAISchedulerConfig OpenAI 高级调度器配置。
@@ -1129,6 +1132,10 @@ type GatewaySchedulingConfig struct {
 	StickyEscapeScoreRatio float64 `mapstructure:"sticky_escape_score_ratio"`
 	// StickyEscapeLoadRate soft 粘性下 sticky 账号负载率达到该百分比时逃逸。
 	StickyEscapeLoadRate int `mapstructure:"sticky_escape_load_rate"`
+	// PreferSoonestReset 开启后，负载感知选择会优先选用「会话窗口最早重置」的账号
+	// （use-it-or-lose-it：先用尽即将重置的账号，保留重置时间还很久的账号）。
+	// 默认 false，保持原有「优先级 → 负载率 → LRU」行为不变。
+	PreferSoonestReset bool `mapstructure:"prefer_soonest_reset"`
 
 	// 负载计算
 	LoadBatchEnabled    bool `mapstructure:"load_batch_enabled"`
@@ -1954,6 +1961,7 @@ func setDefaults() {
 	viper.SetDefault("gateway.openai_ws.scheduler_score_weights.queue", 0.7)
 	viper.SetDefault("gateway.openai_ws.scheduler_score_weights.error_rate", 0.8)
 	viper.SetDefault("gateway.openai_ws.scheduler_score_weights.ttft", 0.5)
+	viper.SetDefault("gateway.openai_ws.scheduler_score_weights.reset", 0.0)
 	// OpenAI HTTP upstream protocol strategy
 	viper.SetDefault("gateway.openai_http2.enabled", true)
 	viper.SetDefault("gateway.openai_http2.allow_proxy_fallback_to_http1", true)
@@ -1998,6 +2006,7 @@ func setDefaults() {
 	viper.SetDefault("gateway.scheduling.sticky_session_mode", GatewayStickySessionModeSoft)
 	viper.SetDefault("gateway.scheduling.sticky_escape_score_ratio", 1.25)
 	viper.SetDefault("gateway.scheduling.sticky_escape_load_rate", 75)
+	viper.SetDefault("gateway.scheduling.prefer_soonest_reset", false)
 	viper.SetDefault("gateway.scheduling.load_batch_enabled", true)
 	viper.SetDefault("gateway.scheduling.load_batch_cache_ttl_ms", 200)
 	viper.SetDefault("gateway.scheduling.snapshot_mget_chunk_size", 128)
