@@ -8874,14 +8874,12 @@ async function loadSettings() {
     syncClaudeOAuthSystemPromptBlocksFormField();
     codexBlacklistRows.value = parseCodexEntriesToRows(
       form.codex_cli_only_blacklist,
-      'blacklist'
     );
     codexWhitelistRows.value = parseCodexEntriesToRows(
       form.codex_cli_only_whitelist,
-      'whitelist'
     );
-    codexFingerprintSignalRows.value = form.codex_cli_only_engine_fingerprint_signals
-      ? parseFingerprintSignals(form.codex_cli_only_engine_fingerprint_signals)
+    codexFingerprintRows.value = form.codex_cli_only_engine_fingerprint_signals
+      ? parseFingerprintSignalsToRows(form.codex_cli_only_engine_fingerprint_signals)
       : defaultFingerprintSignalRows();
     form.login_agreement_mode =
       settings.login_agreement_mode === "checkbox" ? "checkbox" : "modal";
