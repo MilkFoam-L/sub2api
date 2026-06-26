@@ -200,13 +200,12 @@ const normalizedPlatforms = computed(() => {
 })
 
 const primaryPlatform = computed(() => normalizedPlatforms.value[0] || props.platform || 'openai')
-const probeScopeKey = computed(() => [
-  props.accountId ?? '',
-  props.platform ?? '',
-  normalizedPlatforms.value.join(',')
-].join('|'))
-
-const upstreamSyncPlatforms = new Set(['anthropic', 'openai', 'gemini', 'antigravity'])
+const selectedModels = computed(() => props.modelValue || [])
+const searchQuery = ref('')
+const isOpen = ref(false)
+const isLoading = ref(false)
+const availableModels = ref<ModelInfo[]>([])
+const upstreamSyncPlatforms = new Set(['anthropic', 'openai', 'gemini', 'antigravity', 'grok'])
 const canSyncUpstream = computed(() => {
   if (props.accountId) {
     if (normalizedPlatforms.value.length === 0) return true
