@@ -1107,6 +1107,32 @@ type TLSProfileConfig struct {
 	Extensions []uint16 `mapstructure:"extensions"`
 }
 
+// GatewaySchedulingScoreWeights controls multi-objective account scheduling costs.
+type GatewaySchedulingScoreWeights struct {
+	Load           float64 `mapstructure:"load"`
+	Queue          float64 `mapstructure:"queue"`
+	Debt           float64 `mapstructure:"debt"`
+	ErrorRate      float64 `mapstructure:"error_rate"`
+	Latency        float64 `mapstructure:"latency"`
+	RateMultiplier float64 `mapstructure:"rate_multiplier"`
+	QuotaRisk      float64 `mapstructure:"quota_risk"`
+}
+
+// GatewaySchedulingActiveProbeConfig controls scheduled-test-driven account probing.
+type GatewaySchedulingActiveProbeConfig struct {
+	AutoPauseEnabled bool          `mapstructure:"auto_pause_enabled"`
+	FailureThreshold int           `mapstructure:"failure_threshold"`
+	PauseDuration    time.Duration `mapstructure:"pause_duration"`
+	PauseDurationMax time.Duration `mapstructure:"pause_duration_max"`
+}
+
+// GatewaySchedulingSlowStartConfig controls soft penalties for recently recovered accounts.
+type GatewaySchedulingSlowStartConfig struct {
+	Enabled  bool          `mapstructure:"enabled"`
+	Duration time.Duration `mapstructure:"duration"`
+	Penalty  float64       `mapstructure:"penalty"`
+}
+
 // GatewaySchedulingConfig accounts scheduling configuration.
 type GatewaySchedulingConfig struct {
 	// 粘性会话排队配置
@@ -1130,6 +1156,18 @@ type GatewaySchedulingConfig struct {
 	SelectionDebtWeight float64 `mapstructure:"selection_debt_weight"`
 	// WaitPenalty 等待队列数量对 cost 的惩罚权重。
 	WaitPenalty float64 `mapstructure:"wait_penalty"`
+	// ScoreWeights 多目标调度评分权重。
+	ScoreWeights GatewaySchedulingScoreWeights `mapstructure:"score_weights"`
+	// LatencyBaselineMS 延迟惩罚基准；延迟超过该值时按比例增加 cost。
+	LatencyBaselineMS int `mapstructure:"latency_baseline_ms"`
+	// QuotaRiskThreshold 剩余额度低于该比例时增加软惩罚。
+	QuotaRiskThreshold float64 `mapstructure:"quota_risk_threshold"`
+	// MaxScorePenalty 单个软指标可贡献的最大惩罚，避免单一指标导致流量塌缩。
+	MaxScorePenalty float64 `mapstructure:"max_score_penalty"`
+	// ActiveProbe 由定时账号测试驱动的主动检测暂停配置。
+	ActiveProbe GatewaySchedulingActiveProbeConfig `mapstructure:"active_probe"`
+	// SlowStart 恢复账号的慢启动软惩罚配置。
+	SlowStart GatewaySchedulingSlowStartConfig `mapstructure:"slow_start"`
 	// StickySessionMode: strict(强粘性)、soft(负载过高可逃逸)、off(关闭 session 粘性)。
 	StickySessionMode string `mapstructure:"sticky_session_mode"`
 	// StickyEscapeScoreRatio soft 粘性下 sticky cost 超过最佳同层 cost 的倍率时逃逸。
@@ -2008,6 +2046,23 @@ func setDefaults() {
 	viper.SetDefault("gateway.scheduling.selection_debt_ttl_ms", 5000)
 	viper.SetDefault("gateway.scheduling.selection_debt_weight", 1.0)
 	viper.SetDefault("gateway.scheduling.wait_penalty", 1.0)
+	viper.SetDefault("gateway.scheduling.score_weights.load", 1.0)
+	viper.SetDefault("gateway.scheduling.score_weights.queue", 1.0)
+	viper.SetDefault("gateway.scheduling.score_weights.debt", 1.0)
+	viper.SetDefault("gateway.scheduling.score_weights.error_rate", 0.8)
+	viper.SetDefault("gateway.scheduling.score_weights.latency", 0.4)
+	viper.SetDefault("gateway.scheduling.score_weights.rate_multiplier", 0.6)
+	viper.SetDefault("gateway.scheduling.score_weights.quota_risk", 0.3)
+	viper.SetDefault("gateway.scheduling.latency_baseline_ms", 15000)
+	viper.SetDefault("gateway.scheduling.quota_risk_threshold", 0.2)
+	viper.SetDefault("gateway.scheduling.max_score_penalty", 5.0)
+	viper.SetDefault("gateway.scheduling.active_probe.auto_pause_enabled", true)
+	viper.SetDefault("gateway.scheduling.active_probe.failure_threshold", 3)
+	viper.SetDefault("gateway.scheduling.active_probe.pause_duration", 10*time.Minute)
+	viper.SetDefault("gateway.scheduling.active_probe.pause_duration_max", time.Hour)
+	viper.SetDefault("gateway.scheduling.slow_start.enabled", true)
+	viper.SetDefault("gateway.scheduling.slow_start.duration", 5*time.Minute)
+	viper.SetDefault("gateway.scheduling.slow_start.penalty", 1.0)
 	viper.SetDefault("gateway.scheduling.sticky_session_mode", GatewayStickySessionModeSoft)
 	viper.SetDefault("gateway.scheduling.sticky_escape_score_ratio", 1.25)
 	viper.SetDefault("gateway.scheduling.sticky_escape_load_rate", 75)
@@ -2889,6 +2944,52 @@ func (c *Config) Validate() error {
 	}
 	if c.Gateway.Scheduling.WaitPenalty < 0 {
 		return fmt.Errorf("gateway.scheduling.wait_penalty must be non-negative")
+	}
+	if c.Gateway.Scheduling.ScoreWeights.Load < 0 ||
+		c.Gateway.Scheduling.ScoreWeights.Queue < 0 ||
+		c.Gateway.Scheduling.ScoreWeights.Debt < 0 ||
+		c.Gateway.Scheduling.ScoreWeights.ErrorRate < 0 ||
+		c.Gateway.Scheduling.ScoreWeights.Latency < 0 ||
+		c.Gateway.Scheduling.ScoreWeights.RateMultiplier < 0 ||
+		c.Gateway.Scheduling.ScoreWeights.QuotaRisk < 0 {
+		return fmt.Errorf("gateway.scheduling.score_weights.* must be non-negative")
+	}
+	gatewaySchedulingWeightSum := c.Gateway.Scheduling.ScoreWeights.Load +
+		c.Gateway.Scheduling.ScoreWeights.Queue +
+		c.Gateway.Scheduling.ScoreWeights.Debt +
+		c.Gateway.Scheduling.ScoreWeights.ErrorRate +
+		c.Gateway.Scheduling.ScoreWeights.Latency +
+		c.Gateway.Scheduling.ScoreWeights.RateMultiplier +
+		c.Gateway.Scheduling.ScoreWeights.QuotaRisk
+	if gatewaySchedulingWeightSum <= 0 {
+		return fmt.Errorf("gateway.scheduling.score_weights must not all be zero")
+	}
+	if c.Gateway.Scheduling.LatencyBaselineMS <= 0 {
+		return fmt.Errorf("gateway.scheduling.latency_baseline_ms must be positive")
+	}
+	if c.Gateway.Scheduling.QuotaRiskThreshold < 0 || c.Gateway.Scheduling.QuotaRiskThreshold > 1 {
+		return fmt.Errorf("gateway.scheduling.quota_risk_threshold must be between 0 and 1")
+	}
+	if c.Gateway.Scheduling.MaxScorePenalty < 0 {
+		return fmt.Errorf("gateway.scheduling.max_score_penalty must be non-negative")
+	}
+	if c.Gateway.Scheduling.ActiveProbe.FailureThreshold <= 0 {
+		return fmt.Errorf("gateway.scheduling.active_probe.failure_threshold must be positive")
+	}
+	if c.Gateway.Scheduling.ActiveProbe.PauseDuration <= 0 {
+		return fmt.Errorf("gateway.scheduling.active_probe.pause_duration must be positive")
+	}
+	if c.Gateway.Scheduling.ActiveProbe.PauseDurationMax <= 0 {
+		return fmt.Errorf("gateway.scheduling.active_probe.pause_duration_max must be positive")
+	}
+	if c.Gateway.Scheduling.ActiveProbe.PauseDurationMax < c.Gateway.Scheduling.ActiveProbe.PauseDuration {
+		return fmt.Errorf("gateway.scheduling.active_probe.pause_duration_max must be >= pause_duration")
+	}
+	if c.Gateway.Scheduling.SlowStart.Duration <= 0 {
+		return fmt.Errorf("gateway.scheduling.slow_start.duration must be positive")
+	}
+	if c.Gateway.Scheduling.SlowStart.Penalty < 0 {
+		return fmt.Errorf("gateway.scheduling.slow_start.penalty must be non-negative")
 	}
 	stickySessionMode := strings.ToLower(strings.TrimSpace(c.Gateway.Scheduling.StickySessionMode))
 	switch stickySessionMode {

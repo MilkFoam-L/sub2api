@@ -442,6 +442,66 @@ gateway:
     # Waiting queue penalty weight in scheduler cost
     # 等待队列在 cost 中的惩罚权重
     wait_penalty: 1.0
+    # Multi-objective scheduler score weights. Priority still wins before these weights are applied.
+    # 多目标调度评分权重；priority 仍先分层，同层账号再按以下指标评分。
+    score_weights:
+      # Current concurrency load weight
+      # 当前并发负载权重
+      load: 1.0
+      # Waiting queue weight
+      # 等待队列权重
+      queue: 1.0
+      # Short-term selection debt weight
+      # 短期调度债务权重
+      debt: 1.0
+      # Runtime upstream error-rate EWMA weight
+      # 运行时上游错误率 EWMA 权重
+      error_rate: 0.8
+      # Runtime latency EWMA weight
+      # 运行时延迟 EWMA 权重
+      latency: 0.4
+      # Billing rate multiplier weight; higher multiplier receives higher cost
+      # 账号倍率权重；倍率越高调度成本越高
+      rate_multiplier: 0.6
+      # Quota exhaustion risk weight
+      # 额度接近耗尽风险权重
+      quota_risk: 0.3
+    # Latency baseline in milliseconds. Latency above this value receives a soft penalty.
+    # 延迟评分基准（毫秒）；超过该值后增加软惩罚。
+    latency_baseline_ms: 15000
+    # Quota remaining ratio threshold for soft penalty; 0.2 means start penalizing below 20% remaining.
+    # 剩余额度低于该比例时开始软惩罚；0.2 表示低于 20% 开始惩罚。
+    quota_risk_threshold: 0.2
+    # Maximum single soft metric penalty to avoid traffic collapse caused by one noisy signal.
+    # 单个软指标最大惩罚，避免单一噪声指标导致流量塌缩。
+    max_score_penalty: 5.0
+    # Active probe auto-pause driven by existing scheduled account test plans.
+    # 主动检测自动暂停：仅由已有账号定时测试计划触发，不会自动扫描所有账号。
+    active_probe:
+      # Pause account scheduling after consecutive scheduled test failures.
+      # 定时探活连续失败后自动临时暂停账号调度。
+      auto_pause_enabled: true
+      # Consecutive failure threshold before pausing.
+      # 连续失败达到该阈值才暂停。
+      failure_threshold: 3
+      # Base pause duration; actual duration grows with consecutive failures.
+      # 基础暂停时长；连续失败越多暂停越久。
+      pause_duration: 10m
+      # Maximum pause duration cap.
+      # 暂停时长上限。
+      pause_duration_max: 1h
+    # Slow start soft penalty for accounts recovered by scheduled tests.
+    # 定时探活恢复账号后的慢启动软惩罚，避免刚恢复就吃满流量。
+    slow_start:
+      # Enable slow-start scheduling penalty.
+      # 是否启用慢启动调度惩罚。
+      enabled: true
+      # Slow-start window duration.
+      # 慢启动窗口时长。
+      duration: 5m
+      # Initial penalty at the beginning of the window; decays to zero.
+      # 窗口开始时的惩罚值，会逐步衰减到 0。
+      penalty: 1.0
     # Sticky session mode: strict keeps binding, soft escapes overloaded accounts, off disables session stickiness
     # 粘性会话模式：strict 强粘性，soft 过载可逃逸，off 关闭会话粘性
     sticky_session_mode: soft

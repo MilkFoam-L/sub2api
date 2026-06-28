@@ -94,6 +94,45 @@ func TestLoadDefaultSchedulingConfig(t *testing.T) {
 	if cfg.Gateway.Scheduling.StickyEscapeLoadRate != 75 {
 		t.Fatalf("StickyEscapeLoadRate = %d, want 75", cfg.Gateway.Scheduling.StickyEscapeLoadRate)
 	}
+	if cfg.Gateway.Scheduling.ScoreWeights.Load != 1.0 ||
+		cfg.Gateway.Scheduling.ScoreWeights.Queue != 1.0 ||
+		cfg.Gateway.Scheduling.ScoreWeights.Debt != 1.0 ||
+		cfg.Gateway.Scheduling.ScoreWeights.ErrorRate != 0.8 ||
+		cfg.Gateway.Scheduling.ScoreWeights.Latency != 0.4 ||
+		cfg.Gateway.Scheduling.ScoreWeights.RateMultiplier != 0.6 ||
+		cfg.Gateway.Scheduling.ScoreWeights.QuotaRisk != 0.3 {
+		t.Fatalf("ScoreWeights = %+v, want default multi-objective weights", cfg.Gateway.Scheduling.ScoreWeights)
+	}
+	if cfg.Gateway.Scheduling.LatencyBaselineMS != 15000 {
+		t.Fatalf("LatencyBaselineMS = %d, want 15000", cfg.Gateway.Scheduling.LatencyBaselineMS)
+	}
+	if cfg.Gateway.Scheduling.QuotaRiskThreshold != 0.2 {
+		t.Fatalf("QuotaRiskThreshold = %v, want 0.2", cfg.Gateway.Scheduling.QuotaRiskThreshold)
+	}
+	if cfg.Gateway.Scheduling.MaxScorePenalty != 5.0 {
+		t.Fatalf("MaxScorePenalty = %v, want 5.0", cfg.Gateway.Scheduling.MaxScorePenalty)
+	}
+	if !cfg.Gateway.Scheduling.ActiveProbe.AutoPauseEnabled {
+		t.Fatalf("ActiveProbe.AutoPauseEnabled = false, want true")
+	}
+	if cfg.Gateway.Scheduling.ActiveProbe.FailureThreshold != 3 {
+		t.Fatalf("ActiveProbe.FailureThreshold = %d, want 3", cfg.Gateway.Scheduling.ActiveProbe.FailureThreshold)
+	}
+	if cfg.Gateway.Scheduling.ActiveProbe.PauseDuration != 10*time.Minute {
+		t.Fatalf("ActiveProbe.PauseDuration = %v, want 10m", cfg.Gateway.Scheduling.ActiveProbe.PauseDuration)
+	}
+	if cfg.Gateway.Scheduling.ActiveProbe.PauseDurationMax != time.Hour {
+		t.Fatalf("ActiveProbe.PauseDurationMax = %v, want 1h", cfg.Gateway.Scheduling.ActiveProbe.PauseDurationMax)
+	}
+	if !cfg.Gateway.Scheduling.SlowStart.Enabled {
+		t.Fatalf("SlowStart.Enabled = false, want true")
+	}
+	if cfg.Gateway.Scheduling.SlowStart.Duration != 5*time.Minute {
+		t.Fatalf("SlowStart.Duration = %v, want 5m", cfg.Gateway.Scheduling.SlowStart.Duration)
+	}
+	if cfg.Gateway.Scheduling.SlowStart.Penalty != 1.0 {
+		t.Fatalf("SlowStart.Penalty = %v, want 1.0", cfg.Gateway.Scheduling.SlowStart.Penalty)
+	}
 	if !cfg.Gateway.Scheduling.LoadBatchEnabled {
 		t.Fatalf("LoadBatchEnabled = false, want true")
 	}
@@ -330,6 +369,23 @@ func TestLoadSchedulingConfigFromEnv(t *testing.T) {
 	t.Setenv("GATEWAY_SCHEDULING_STICKY_SESSION_MODE", GatewayStickySessionModeStrict)
 	t.Setenv("GATEWAY_SCHEDULING_STICKY_ESCAPE_SCORE_RATIO", "1.75")
 	t.Setenv("GATEWAY_SCHEDULING_STICKY_ESCAPE_LOAD_RATE", "90")
+	t.Setenv("GATEWAY_SCHEDULING_SCORE_WEIGHTS_LOAD", "1.2")
+	t.Setenv("GATEWAY_SCHEDULING_SCORE_WEIGHTS_QUEUE", "1.3")
+	t.Setenv("GATEWAY_SCHEDULING_SCORE_WEIGHTS_DEBT", "1.4")
+	t.Setenv("GATEWAY_SCHEDULING_SCORE_WEIGHTS_ERROR_RATE", "0.9")
+	t.Setenv("GATEWAY_SCHEDULING_SCORE_WEIGHTS_LATENCY", "0.7")
+	t.Setenv("GATEWAY_SCHEDULING_SCORE_WEIGHTS_RATE_MULTIPLIER", "0.6")
+	t.Setenv("GATEWAY_SCHEDULING_SCORE_WEIGHTS_QUOTA_RISK", "0.5")
+	t.Setenv("GATEWAY_SCHEDULING_LATENCY_BASELINE_MS", "9000")
+	t.Setenv("GATEWAY_SCHEDULING_QUOTA_RISK_THRESHOLD", "0.15")
+	t.Setenv("GATEWAY_SCHEDULING_MAX_SCORE_PENALTY", "3.5")
+	t.Setenv("GATEWAY_SCHEDULING_ACTIVE_PROBE_AUTO_PAUSE_ENABLED", "false")
+	t.Setenv("GATEWAY_SCHEDULING_ACTIVE_PROBE_FAILURE_THRESHOLD", "5")
+	t.Setenv("GATEWAY_SCHEDULING_ACTIVE_PROBE_PAUSE_DURATION", "15m")
+	t.Setenv("GATEWAY_SCHEDULING_ACTIVE_PROBE_PAUSE_DURATION_MAX", "2h")
+	t.Setenv("GATEWAY_SCHEDULING_SLOW_START_ENABLED", "false")
+	t.Setenv("GATEWAY_SCHEDULING_SLOW_START_DURATION", "7m")
+	t.Setenv("GATEWAY_SCHEDULING_SLOW_START_PENALTY", "1.7")
 
 	cfg, err := Load()
 	if err != nil {
@@ -362,6 +418,45 @@ func TestLoadSchedulingConfigFromEnv(t *testing.T) {
 	}
 	if cfg.Gateway.Scheduling.StickyEscapeLoadRate != 90 {
 		t.Fatalf("StickyEscapeLoadRate = %d, want 90", cfg.Gateway.Scheduling.StickyEscapeLoadRate)
+	}
+	if cfg.Gateway.Scheduling.ScoreWeights.Load != 1.2 ||
+		cfg.Gateway.Scheduling.ScoreWeights.Queue != 1.3 ||
+		cfg.Gateway.Scheduling.ScoreWeights.Debt != 1.4 ||
+		cfg.Gateway.Scheduling.ScoreWeights.ErrorRate != 0.9 ||
+		cfg.Gateway.Scheduling.ScoreWeights.Latency != 0.7 ||
+		cfg.Gateway.Scheduling.ScoreWeights.RateMultiplier != 0.6 ||
+		cfg.Gateway.Scheduling.ScoreWeights.QuotaRisk != 0.5 {
+		t.Fatalf("ScoreWeights = %+v, want env overrides", cfg.Gateway.Scheduling.ScoreWeights)
+	}
+	if cfg.Gateway.Scheduling.LatencyBaselineMS != 9000 {
+		t.Fatalf("LatencyBaselineMS = %d, want 9000", cfg.Gateway.Scheduling.LatencyBaselineMS)
+	}
+	if cfg.Gateway.Scheduling.QuotaRiskThreshold != 0.15 {
+		t.Fatalf("QuotaRiskThreshold = %v, want 0.15", cfg.Gateway.Scheduling.QuotaRiskThreshold)
+	}
+	if cfg.Gateway.Scheduling.MaxScorePenalty != 3.5 {
+		t.Fatalf("MaxScorePenalty = %v, want 3.5", cfg.Gateway.Scheduling.MaxScorePenalty)
+	}
+	if cfg.Gateway.Scheduling.ActiveProbe.AutoPauseEnabled {
+		t.Fatalf("ActiveProbe.AutoPauseEnabled = true, want false")
+	}
+	if cfg.Gateway.Scheduling.ActiveProbe.FailureThreshold != 5 {
+		t.Fatalf("ActiveProbe.FailureThreshold = %d, want 5", cfg.Gateway.Scheduling.ActiveProbe.FailureThreshold)
+	}
+	if cfg.Gateway.Scheduling.ActiveProbe.PauseDuration != 15*time.Minute {
+		t.Fatalf("ActiveProbe.PauseDuration = %v, want 15m", cfg.Gateway.Scheduling.ActiveProbe.PauseDuration)
+	}
+	if cfg.Gateway.Scheduling.ActiveProbe.PauseDurationMax != 2*time.Hour {
+		t.Fatalf("ActiveProbe.PauseDurationMax = %v, want 2h", cfg.Gateway.Scheduling.ActiveProbe.PauseDurationMax)
+	}
+	if cfg.Gateway.Scheduling.SlowStart.Enabled {
+		t.Fatalf("SlowStart.Enabled = true, want false")
+	}
+	if cfg.Gateway.Scheduling.SlowStart.Duration != 7*time.Minute {
+		t.Fatalf("SlowStart.Duration = %v, want 7m", cfg.Gateway.Scheduling.SlowStart.Duration)
+	}
+	if cfg.Gateway.Scheduling.SlowStart.Penalty != 1.7 {
+		t.Fatalf("SlowStart.Penalty = %v, want 1.7", cfg.Gateway.Scheduling.SlowStart.Penalty)
 	}
 }
 
@@ -1634,6 +1729,58 @@ func TestValidateConfigErrors(t *testing.T) {
 			name:    "gateway scheduling sticky escape load rate",
 			mutate:  func(c *Config) { c.Gateway.Scheduling.StickyEscapeLoadRate = 101 },
 			wantErr: "gateway.scheduling.sticky_escape_load_rate",
+		},
+		{
+			name:    "gateway scheduling score weights non-negative",
+			mutate:  func(c *Config) { c.Gateway.Scheduling.ScoreWeights.ErrorRate = -0.1 },
+			wantErr: "gateway.scheduling.score_weights.* must be non-negative",
+		},
+		{
+			name: "gateway scheduling score weights not all zero",
+			mutate: func(c *Config) {
+				c.Gateway.Scheduling.ScoreWeights = GatewaySchedulingScoreWeights{}
+			},
+			wantErr: "gateway.scheduling.score_weights must not all be zero",
+		},
+		{
+			name:    "gateway scheduling latency baseline",
+			mutate:  func(c *Config) { c.Gateway.Scheduling.LatencyBaselineMS = 0 },
+			wantErr: "gateway.scheduling.latency_baseline_ms",
+		},
+		{
+			name:    "gateway scheduling quota risk threshold",
+			mutate:  func(c *Config) { c.Gateway.Scheduling.QuotaRiskThreshold = 1.1 },
+			wantErr: "gateway.scheduling.quota_risk_threshold",
+		},
+		{
+			name:    "gateway scheduling max score penalty",
+			mutate:  func(c *Config) { c.Gateway.Scheduling.MaxScorePenalty = -0.1 },
+			wantErr: "gateway.scheduling.max_score_penalty",
+		},
+		{
+			name:    "gateway scheduling active probe failure threshold",
+			mutate:  func(c *Config) { c.Gateway.Scheduling.ActiveProbe.FailureThreshold = 0 },
+			wantErr: "gateway.scheduling.active_probe.failure_threshold",
+		},
+		{
+			name:    "gateway scheduling active probe pause duration",
+			mutate:  func(c *Config) { c.Gateway.Scheduling.ActiveProbe.PauseDuration = 0 },
+			wantErr: "gateway.scheduling.active_probe.pause_duration",
+		},
+		{
+			name:    "gateway scheduling active probe pause duration max",
+			mutate:  func(c *Config) { c.Gateway.Scheduling.ActiveProbe.PauseDurationMax = time.Second },
+			wantErr: "gateway.scheduling.active_probe.pause_duration_max",
+		},
+		{
+			name:    "gateway scheduling slow start duration",
+			mutate:  func(c *Config) { c.Gateway.Scheduling.SlowStart.Duration = 0 },
+			wantErr: "gateway.scheduling.slow_start.duration",
+		},
+		{
+			name:    "gateway scheduling slow start penalty",
+			mutate:  func(c *Config) { c.Gateway.Scheduling.SlowStart.Penalty = -0.1 },
+			wantErr: "gateway.scheduling.slow_start.penalty",
 		},
 		{
 			name:    "gateway scheduling outbox poll",

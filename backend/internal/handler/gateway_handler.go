@@ -37,6 +37,20 @@ const gatewayCompatibilityMetricsLogInterval = 1024
 
 var gatewayCompatibilityMetricsLogCounter atomic.Uint64
 
+func (h *GatewayHandler) reportAccountRuntimeResult(ctx context.Context, accountID int64, startedAt time.Time, err error) {
+	if h == nil || h.gatewayService == nil || accountID <= 0 || startedAt.IsZero() {
+		return
+	}
+	if err != nil {
+		if ctx != nil && ctx.Err() != nil {
+			return
+		}
+		h.gatewayService.ReportAccountRuntimeResult(accountID, false, time.Since(startedAt))
+		return
+	}
+	h.gatewayService.ReportAccountRuntimeResult(accountID, true, time.Since(startedAt))
+}
+
 func upstreamErrorDetailFromBody(cfg *config.Config, body []byte) string {
 	if cfg == nil || !cfg.Gateway.LogUpstreamErrorBody || len(body) == 0 {
 		return ""
@@ -456,6 +470,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 			}
 			// 记录 Forward 前已写入字节数，Forward 后若增加则说明 SSE 内容已发，禁止 failover
 			writerSizeBeforeForward := c.Writer.Size()
+			forwardStartedAt := time.Now()
 			if account.Platform == service.PlatformAntigravity {
 				result, err = h.antigravityGatewayService.ForwardGemini(
 					requestCtx,
@@ -474,6 +489,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 			if accountReleaseFunc != nil {
 				accountReleaseFunc()
 			}
+			h.reportAccountRuntimeResult(requestCtx, account.ID, forwardStartedAt, err)
 			if err != nil {
 				var failoverErr *service.UpstreamFailoverError
 				if errors.As(err, &failoverErr) {
@@ -824,6 +840,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 			}
 			// 记录 Forward 前已写入字节数，Forward 后若增加则说明 SSE 内容已发，禁止 failover
 			writerSizeBeforeForward := c.Writer.Size()
+			forwardStartedAt := time.Now()
 			if account.Platform == service.PlatformAntigravity && account.Type != service.AccountTypeAPIKey {
 				result, err = h.antigravityGatewayService.Forward(requestCtx, c, account, attemptBody, hasBoundSession)
 			} else {
@@ -840,6 +857,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 			if accountReleaseFunc != nil {
 				accountReleaseFunc()
 			}
+			h.reportAccountRuntimeResult(requestCtx, account.ID, forwardStartedAt, err)
 			if err != nil {
 				// Beta policy block: return 400 immediately, no failover
 				var betaBlockedErr *service.BetaBlockedError

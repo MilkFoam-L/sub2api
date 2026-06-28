@@ -93,8 +93,9 @@ type forceCacheBillingKeyType struct{}
 
 // accountWithLoad 账号与负载信息的组合，用于负载感知调度
 type accountWithLoad struct {
-	account  *Account
-	loadInfo *AccountLoadInfo
+	account      *Account
+	loadInfo     *AccountLoadInfo
+	runtimeStats *schedulerAccountRuntimeSnapshot
 }
 
 var ForceCacheBillingContextKey = forceCacheBillingKeyType{}
@@ -650,6 +651,7 @@ type GatewayService struct {
 	tlsFPProfileService   *TLSFingerprintProfileService
 	balanceNotifyService  *BalanceNotifyService
 	userPlatformQuotaRepo UserPlatformQuotaRepository
+	runtimeStats          *schedulerAccountRuntimeStats
 }
 
 // NewGatewayService creates a new GatewayService
@@ -717,6 +719,7 @@ func NewGatewayService(
 		resolver:              resolver,
 		balanceNotifyService:  balanceNotifyService,
 		userPlatformQuotaRepo: userPlatformQuotaRepo,
+		runtimeStats:          newSchedulerAccountRuntimeStats(),
 	}
 	svc.userGroupRateResolver = newUserGroupRateResolver(
 		userGroupRateRepo,
@@ -734,6 +737,54 @@ func NewGatewayService(
 }
 
 // GenerateSessionHash 从预解析请求计算粘性会话 hash
+const (
+	gatewayRuntimeOutlierFailureThreshold = 3
+	gatewayRuntimeOutlierBaseCooldown     = time.Minute
+	gatewayRuntimeOutlierMaxCooldown      = 10 * time.Minute
+)
+
+func (s *GatewayService) MarkAccountSlowStart(accountID int64, duration time.Duration) {
+	if s == nil || s.runtimeStats == nil || accountID <= 0 || duration <= 0 {
+		return
+	}
+	s.runtimeStats.markSlowStart(accountID, duration)
+}
+
+func (s *GatewayService) ReportAccountRuntimeResult(accountID int64, success bool, latency time.Duration) {
+
+	if s == nil || s.runtimeStats == nil || accountID <= 0 {
+		return
+	}
+	latencyMs := int(latency / time.Millisecond)
+	if latencyMs <= 0 {
+		s.runtimeStats.report(accountID, success, nil)
+	} else {
+		s.runtimeStats.report(accountID, success, &latencyMs)
+	}
+	if !success {
+		s.applyRuntimeOutlierEjection(accountID)
+	}
+}
+
+func (s *GatewayService) applyRuntimeOutlierEjection(accountID int64) {
+	if s == nil || s.accountRepo == nil || s.runtimeStats == nil || accountID <= 0 {
+		return
+	}
+	snapshot := s.runtimeStats.snapshot(accountID)
+	if snapshot == nil || snapshot.ConsecutiveFailures < gatewayRuntimeOutlierFailureThreshold {
+		return
+	}
+	cooldown := time.Duration(snapshot.ConsecutiveFailures-gatewayRuntimeOutlierFailureThreshold+1) * gatewayRuntimeOutlierBaseCooldown
+	if cooldown > gatewayRuntimeOutlierMaxCooldown {
+		cooldown = gatewayRuntimeOutlierMaxCooldown
+	}
+	until := time.Now().Add(cooldown)
+	reason := fmt.Sprintf("runtime outlier: consecutive upstream failures=%d (auto temp-unschedule %s)", snapshot.ConsecutiveFailures, cooldown)
+	if err := s.accountRepo.SetTempUnschedulable(context.Background(), accountID, until, reason); err != nil {
+		slog.Warn("gateway.runtime_outlier_temp_unschedule_failed", "account_id", accountID, "error", err)
+	}
+}
+
 func (s *GatewayService) GenerateSessionHash(parsed *ParsedRequest) string {
 	if parsed == nil {
 		return ""
@@ -1954,7 +2005,7 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 					loadInfo = &AccountLoadInfo{AccountID: acc.ID}
 				}
 				if loadInfo.LoadRate < 100 {
-					routingAvailable = append(routingAvailable, accountWithLoad{account: acc, loadInfo: loadInfo})
+					routingAvailable = append(routingAvailable, s.accountWithRuntimeLoad(acc, loadInfo))
 				}
 			}
 
@@ -2069,7 +2120,7 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 							if !s.isAccountSchedulableForModelSelection(ctx, candidate, requestedModel) || !s.isAccountSchedulableForQuota(candidate) {
 								continue
 							}
-							stickyItems = append(stickyItems, accountWithLoad{account: candidate, loadInfo: &AccountLoadInfo{AccountID: candidate.ID}})
+							stickyItems = append(stickyItems, s.accountWithRuntimeLoad(candidate, &AccountLoadInfo{AccountID: candidate.ID}))
 							loadReq = append(loadReq, AccountWithConcurrency{ID: candidate.ID, MaxConcurrency: candidate.EffectiveLoadFactor()})
 						}
 						if len(stickyItems) > 1 {
@@ -2246,11 +2297,9 @@ stickyLayerDone:
 				loadInfo = &AccountLoadInfo{AccountID: acc.ID}
 			}
 			if loadInfo.LoadRate < 100 {
-				available = append(available, accountWithLoad{
-					account:  acc,
-					loadInfo: loadInfo,
-				})
+				available = append(available, s.accountWithRuntimeLoad(acc, loadInfo))
 			}
+
 		}
 
 		if cfg.PreferSoonestReset {
@@ -2284,7 +2333,7 @@ stickyLayerDone:
 	} else {
 		fallbackItems := make([]accountWithLoad, 0, len(candidates))
 		for _, acc := range candidates {
-			fallbackItems = append(fallbackItems, accountWithLoad{account: acc, loadInfo: &AccountLoadInfo{AccountID: acc.ID}})
+			fallbackItems = append(fallbackItems, s.accountWithRuntimeLoad(acc, &AccountLoadInfo{AccountID: acc.ID}))
 		}
 		fallbackDebts := map[int64]int{}
 		if s.concurrencyService != nil {
@@ -2599,6 +2648,14 @@ func (s *GatewayService) isAccountAllowedForPlatform(account *Account, platform 
 		return account.Platform == PlatformAntigravity && account.IsMixedSchedulingEnabled()
 	}
 	return account.Platform == platform
+}
+
+func (s *GatewayService) accountWithRuntimeLoad(account *Account, loadInfo *AccountLoadInfo) accountWithLoad {
+	item := accountWithLoad{account: account, loadInfo: loadInfo}
+	if s != nil && s.runtimeStats != nil && account != nil {
+		item.runtimeStats = s.runtimeStats.snapshot(account.ID)
+	}
+	return item
 }
 
 func (s *GatewayService) isAccountSchedulableForSelection(account *Account) bool {

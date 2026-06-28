@@ -11,6 +11,8 @@ import (
 
 func schedulerIntPtr(v int) *int { return &v }
 
+func schedulerFloatPtr(v float64) *float64 { return &v }
+
 func makeWeightedPolicyAccount(id int64, priority int, concurrency int, loadFactor int, current int, waiting int) accountWithLoad {
 	account := &Account{
 		ID:          id,
@@ -41,11 +43,24 @@ func makeWeightedPolicyAccount(id int64, priority int, concurrency int, loadFact
 
 func testWeightedP2CConfig() config.GatewaySchedulingConfig {
 	return config.GatewaySchedulingConfig{
-		Algorithm:              config.GatewaySchedulingAlgorithmWeightedP2C,
-		P2CChoiceCount:         2,
-		SelectionDebtTTLMS:     5000,
-		SelectionDebtWeight:    1,
-		WaitPenalty:            1,
+		Algorithm:           config.GatewaySchedulingAlgorithmWeightedP2C,
+		P2CChoiceCount:      2,
+		SelectionDebtTTLMS:  5000,
+		SelectionDebtWeight: 1,
+		WaitPenalty:         1,
+		ScoreWeights: config.GatewaySchedulingScoreWeights{
+			Load:           1,
+			Queue:          1,
+			Debt:           1,
+			ErrorRate:      0.8,
+			Latency:        0.4,
+			RateMultiplier: 0.6,
+			QuotaRisk:      0.3,
+		},
+		LatencyBaselineMS:      15000,
+		QuotaRiskThreshold:     0.2,
+		MaxScorePenalty:        5,
+		SlowStart:              config.GatewaySchedulingSlowStartConfig{Enabled: true, Duration: 5 * time.Minute, Penalty: 1},
 		StickySessionMode:      config.GatewayStickySessionModeSoft,
 		StickyEscapeScoreRatio: 1.25,
 		StickyEscapeLoadRate:   75,
@@ -124,6 +139,130 @@ func TestSchedulerPolicyStrictStickyKeepsOverloadedAccount(t *testing.T) {
 
 	require.True(t, decision.useSticky)
 	require.Equal(t, "strict", decision.reason)
+}
+
+func TestSchedulerPolicyCostPrefersLowerRateMultiplier(t *testing.T) {
+	cfg := testWeightedP2CConfig()
+	cfg.ScoreWeights.RateMultiplier = 1
+	cheap := makeWeightedPolicyAccount(1, 0, 1, 10, 0, 0)
+	expensive := makeWeightedPolicyAccount(2, 0, 1, 10, 0, 0)
+	cheap.account.RateMultiplier = schedulerFloatPtr(0.5)
+	expensive.account.RateMultiplier = schedulerFloatPtr(2.0)
+
+	cheapCost := schedulerAccountCost(cheap, 0, cfg)
+	expensiveCost := schedulerAccountCost(expensive, 0, cfg)
+
+	require.Less(t, cheapCost, expensiveCost, "同等负载下低倍率账号应该拥有更低调度成本")
+}
+
+func TestSchedulerPolicyCostPenalizesUnhealthyRuntimeStats(t *testing.T) {
+	cfg := testWeightedP2CConfig()
+	cfg.ScoreWeights.ErrorRate = 1
+	healthy := makeWeightedPolicyAccount(1, 0, 1, 10, 0, 0)
+	unhealthy := makeWeightedPolicyAccount(2, 0, 1, 10, 0, 0)
+	healthy.runtimeStats = &schedulerAccountRuntimeSnapshot{ErrorRate: 0.05}
+	unhealthy.runtimeStats = &schedulerAccountRuntimeSnapshot{ErrorRate: 0.8}
+
+	healthyCost := schedulerAccountCost(healthy, 0, cfg)
+	unhealthyCost := schedulerAccountCost(unhealthy, 0, cfg)
+
+	require.Greater(t, unhealthyCost, healthyCost, "错误率更高的账号应该被健康评分惩罚")
+}
+
+func TestSchedulerPolicyCostPenalizesHighLatencyRuntimeStats(t *testing.T) {
+	cfg := testWeightedP2CConfig()
+	cfg.ScoreWeights.Latency = 1
+	cfg.LatencyBaselineMS = 1000
+	fast := makeWeightedPolicyAccount(1, 0, 1, 10, 0, 0)
+	slow := makeWeightedPolicyAccount(2, 0, 1, 10, 0, 0)
+	fast.runtimeStats = &schedulerAccountRuntimeSnapshot{LatencyMs: 500, HasLatency: true}
+	slow.runtimeStats = &schedulerAccountRuntimeSnapshot{LatencyMs: 4000, HasLatency: true}
+
+	fastCost := schedulerAccountCost(fast, 0, cfg)
+	slowCost := schedulerAccountCost(slow, 0, cfg)
+
+	require.Greater(t, slowCost, fastCost, "延迟 EWMA 更高的账号应该被评分惩罚")
+}
+
+func TestSchedulerPolicyCostPenalizesQuotaRiskBeforeHardLimit(t *testing.T) {
+	cfg := testWeightedP2CConfig()
+	cfg.ScoreWeights.QuotaRisk = 1
+	cfg.QuotaRiskThreshold = 0.2
+	lowRisk := makeWeightedPolicyAccount(1, 0, 1, 10, 0, 0)
+	highRisk := makeWeightedPolicyAccount(2, 0, 1, 10, 0, 0)
+	lowRisk.account.Extra = map[string]any{"quota_limit": 100.0, "quota_used": 20.0}
+	highRisk.account.Extra = map[string]any{"quota_limit": 100.0, "quota_used": 95.0}
+
+	lowRiskCost := schedulerAccountCost(lowRisk, 0, cfg)
+	highRiskCost := schedulerAccountCost(highRisk, 0, cfg)
+
+	require.Greater(t, highRiskCost, lowRiskCost, "额度接近耗尽但未超限的账号应该被软惩罚")
+	require.False(t, highRisk.account.IsQuotaExceeded(), "测试前提：高风险账号尚未触发硬超限过滤")
+}
+
+func TestSchedulerPolicyCostPenalizesSlowStartAccount(t *testing.T) {
+	cfg := testWeightedP2CConfig()
+	stable := makeWeightedPolicyAccount(1, 0, 1, 10, 0, 0)
+	recovering := makeWeightedPolicyAccount(2, 0, 1, 10, 0, 0)
+	recovering.runtimeStats = &schedulerAccountRuntimeSnapshot{HasSlowStart: true, SlowStartUntil: time.Now().Add(5 * time.Minute)}
+
+	stableCost := schedulerAccountCost(stable, 0, cfg)
+	recoveringCost := schedulerAccountCost(recovering, 0, cfg)
+
+	require.Greater(t, recoveringCost, stableCost, "刚恢复的账号应该在 slow-start 窗口内被软惩罚")
+}
+
+func TestSchedulerPolicyCostIgnoresExpiredSlowStart(t *testing.T) {
+	cfg := testWeightedP2CConfig()
+	stable := makeWeightedPolicyAccount(1, 0, 1, 10, 0, 0)
+	recovered := makeWeightedPolicyAccount(2, 0, 1, 10, 0, 0)
+	recovered.runtimeStats = &schedulerAccountRuntimeSnapshot{HasSlowStart: true, SlowStartUntil: time.Now().Add(-time.Minute)}
+
+	stableCost := schedulerAccountCost(stable, 0, cfg)
+	recoveredCost := schedulerAccountCost(recovered, 0, cfg)
+
+	require.Equal(t, stableCost, recoveredCost, "slow-start 过期后不应继续惩罚账号")
+}
+
+func TestSchedulerPolicyStrictStickyKeepsSlowStartAccount(t *testing.T) {
+	cfg := testWeightedP2CConfig()
+	cfg.StickySessionMode = config.GatewayStickySessionModeStrict
+	sticky := makeWeightedPolicyAccount(1, 0, 1, 10, 0, 0)
+	best := makeWeightedPolicyAccount(2, 0, 1, 10, 0, 0)
+	sticky.runtimeStats = &schedulerAccountRuntimeSnapshot{HasSlowStart: true, SlowStartUntil: time.Now().Add(5 * time.Minute)}
+
+	decision := shouldUseStickyAccountForScheduling(sticky, []accountWithLoad{sticky, best}, nil, cfg)
+
+	require.True(t, decision.useSticky)
+	require.Equal(t, "strict", decision.reason)
+}
+
+func TestSchedulerPolicySoftStickyEscapesSlowStartAccount(t *testing.T) {
+	cfg := testWeightedP2CConfig()
+	cfg.StickyEscapeScoreRatio = 1.1
+	sticky := makeWeightedPolicyAccount(1, 0, 1, 10, 0, 0)
+	best := makeWeightedPolicyAccount(2, 0, 1, 10, 0, 0)
+	sticky.runtimeStats = &schedulerAccountRuntimeSnapshot{HasSlowStart: true, SlowStartUntil: time.Now().Add(5 * time.Minute)}
+
+	decision := shouldUseStickyAccountForScheduling(sticky, []accountWithLoad{sticky, best}, nil, cfg)
+
+	require.False(t, decision.useSticky)
+	require.Equal(t, "score", decision.reason)
+}
+
+func TestSchedulerPolicySoftStickyEscapesCostlyAccount(t *testing.T) {
+	cfg := testWeightedP2CConfig()
+	cfg.ScoreWeights.RateMultiplier = 1
+	cfg.StickyEscapeScoreRatio = 1.1
+	sticky := makeWeightedPolicyAccount(1, 0, 1, 10, 0, 0)
+	best := makeWeightedPolicyAccount(2, 0, 1, 10, 0, 0)
+	sticky.account.RateMultiplier = schedulerFloatPtr(3.0)
+	best.account.RateMultiplier = schedulerFloatPtr(0.5)
+
+	decision := shouldUseStickyAccountForScheduling(sticky, []accountWithLoad{sticky, best}, nil, cfg)
+
+	require.False(t, decision.useSticky)
+	require.Equal(t, "score", decision.reason)
 }
 
 func TestConcurrencyServiceSelectionDebtInMemoryFallback(t *testing.T) {

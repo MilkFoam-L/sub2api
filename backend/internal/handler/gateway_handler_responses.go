@@ -235,6 +235,7 @@ func (h *GatewayHandler) Responses(c *gin.Context) {
 
 		// 5. Forward request
 		writerSizeBeforeForward := c.Writer.Size()
+		forwardStartedAt := time.Now()
 		forwardBody := body
 		if channelMapping.Mapped {
 			forwardBody = h.gatewayService.ReplaceModelInBody(body, channelMapping.MappedModel)
@@ -244,6 +245,7 @@ func (h *GatewayHandler) Responses(c *gin.Context) {
 		if accountReleaseFunc != nil {
 			accountReleaseFunc()
 		}
+		h.reportAccountRuntimeResult(requestCtx, account.ID, forwardStartedAt, err)
 
 		if err != nil {
 			var failoverErr *service.UpstreamFailoverError
