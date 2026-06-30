@@ -1102,16 +1102,15 @@ func (s *OpenAIGatewayService) handleOpenAIImagesOAuthNonStreamingResponse(
 		//     （内容层拦截，与账号/承载模型无关），应把拒绝理由作为 400 透传给客户端，
 		//     避免无谓地重试 + 消耗其它账号配额，且让客户端拿到可读的拒绝原因。
 		// (B) 真空响应：既无图也无任何文字输出（罕见，如偶发路由到 gpt-5.x-mini、
-		//     image_gen 工具未执行）。这是上游概率性失败，同账号有时成功有时失败，
-		//     可按原逻辑同账号快速重试，最终再换账号 failover。
+		//     image_gen 工具未执行）。这是上游的概率性失败，此时才按可重试处理。
 		if refusal := extractOpenAIImagesModelRefusal(body); refusal != "" {
 			refusalErr := &OpenAIImagesUpstreamError{
 				StatusCode: http.StatusBadRequest,
 				ErrorType:  "image_generation_user_error",
 				Code:       "content_policy_violation",
-				Message:    "image generation refused by upstream: " + refusal,
+				Message:    sanitizeUpstreamErrorMessage(refusal),
 			}
-			setOpsUpstreamError(c, refusalErr.clientStatusCode(), refusalErr.clientMessage(), "model_refusal")
+			setOpsUpstreamError(c, http.StatusBadRequest, refusalErr.clientMessage(), summarizeOpenAIImagesNoOutputBody(body))
 			writeOpenAIImagesUpstreamErrorResponse(c, refusalErr)
 			return OpenAIUsage{}, 0, nil, refusalErr
 		}

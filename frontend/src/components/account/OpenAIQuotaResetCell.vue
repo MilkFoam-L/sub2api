@@ -80,9 +80,11 @@
 
     <ConfirmDialog
       :show="showResetConfirm"
-      :title="t('admin.accounts.openaiQuota.confirmTitle')"
-      :message="t('admin.accounts.openaiQuota.confirmMessage', { count: availableResetCount })"
-      type="warning"
+      :title="t('admin.accounts.openaiQuotaReset.confirmTitle')"
+      :message="t('admin.accounts.openaiQuotaReset.confirmMessage', { count: availableResetCount })"
+      :confirm-text="t('admin.accounts.openaiQuotaReset.reset')"
+      :cancel-text="t('common.cancel')"
+      danger
       @confirm="confirmReset"
       @cancel="showResetConfirm = false"
     />

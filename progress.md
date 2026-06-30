@@ -162,3 +162,24 @@
 - `.docker-last-tag`：记录本次镜像 tag `0.1.139-35349fc2-dirty-20260629052908`，仅作本地发布记录。
 - `progress.md`：追加本轮构建、推送、验证和回滚说明。
 - 回滚方式：部署端可将镜像 tag 回切到上一次已知可用版本 `0.1.139-34d011c5-20260626223230`；如需恢复本地发布记录，可将 `.docker-last-tag` 改回该 tag，并从 `progress.md` 末尾移除本轮 `2026-06-29` 记录。
+
+## 2026-06-29 - Task: 合并上游 v0.1.140
+### What was done
+- 将上游 `Wei-Shaw/sub2api` 的 `v0.1.140` release tag 合并到当前 `main` 分支。
+- 在合并中保留本分支后台调度策略设置、图片 reasoning、Claude Code Codex 插件放行等既有定制，同时吸收上游 Grok、Count Tokens、支付回调、内容审核、系统日志、平台额度等更新。
+- 解决 README、配置示例、网关路由、OpenAI/Grok 服务、支付订单、设置页和多语言文案等冲突。
+- 修复合并后重复测试名导致的后端编译失败。
+
+### Testing
+- 通过：`GOCACHE="C:/Users/MilkFoam/Desktop/AI/sub2api/.gocache" go test ./internal/config ./internal/handler ./internal/server ./internal/service ./cmd/server`。
+- 通过：`pnpm run typecheck`。
+- 通过：`pnpm run build`，仅保留 Vite 既有 dynamic import/chunk size 警告和 Browserslist 数据提示。
+- 通过：`git diff --cached --check`，未发现冲突标记或空白错误。
+
+### Notes
+- `README.md`、`README_CN.md`、`README_JA.md`：同步 v0.1.140 文档更新并保留本分支说明。
+- `backend/`：合并 v0.1.140 后端服务、路由、仓储、迁移、测试和调度相关更新。
+- `frontend/`：合并 v0.1.140 前端 API、组件、页面、测试和 i18n 更新。
+- `deploy/config.example.yaml`：合并上游配置示例并保留本分支普通网关调度策略示例。
+- `progress.md`：追加本轮合并、验证和回滚说明。
+- 回滚方式：对本轮合并提交执行 `git revert -m 1 <merge_commit>`；若只需回退上游同步，可回到合并前提交 `57ca70fa`。
