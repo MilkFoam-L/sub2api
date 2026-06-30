@@ -183,3 +183,16 @@
 - `deploy/config.example.yaml`：合并上游配置示例并保留本分支普通网关调度策略示例。
 - `progress.md`：追加本轮合并、验证和回滚说明。
 - 回滚方式：对本轮合并提交执行 `git revert -m 1 <merge_commit>`；若只需回退上游同步，可回到合并前提交 `57ca70fa`。
+
+## 2026-06-29 - Task: 同步运行时版本到 0.1.140
+### What was done
+- 将后端运行时版本号从 `0.1.139` 更新为 `0.1.140`，与已合并的上游 release tag 保持一致。
+
+### Testing
+- 通过：读取 `backend/cmd/server/VERSION` 确认为 `0.1.140`。
+- 通过：`GOCACHE="C:/Users/MilkFoam/Desktop/AI/sub2api/.gocache" go test ./cmd/server -run 'TestDoesNotExist'`。
+
+### Notes
+- `backend/cmd/server/VERSION`：同步运行时版本号为 `0.1.140`。
+- `progress.md`：追加本轮版本同步、验证和回滚说明。
+- 回滚方式：将 `backend/cmd/server/VERSION` 改回 `0.1.139`，并从 `progress.md` 末尾移除本轮 `2026-06-29` 记录。
