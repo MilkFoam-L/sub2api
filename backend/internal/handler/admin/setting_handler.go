@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
@@ -83,6 +84,92 @@ func NewSettingHandler(settingService *service.SettingService, emailService *ser
 // the constructor signature used by existing unit tests.
 func (h *SettingHandler) SetNotificationEmailService(notificationEmailService *service.NotificationEmailService) {
 	h.notificationEmailService = notificationEmailService
+}
+
+func gatewaySchedulingToDTO(cfg config.GatewaySchedulingConfig) dto.GatewaySchedulingSettings {
+	return dto.GatewaySchedulingSettings{
+		ScoreWeights: dto.GatewaySchedulingScoreWeights{
+			Load:           cfg.ScoreWeights.Load,
+			Queue:          cfg.ScoreWeights.Queue,
+			Debt:           cfg.ScoreWeights.Debt,
+			ErrorRate:      cfg.ScoreWeights.ErrorRate,
+			Latency:        cfg.ScoreWeights.Latency,
+			RateMultiplier: cfg.ScoreWeights.RateMultiplier,
+			QuotaRisk:      cfg.ScoreWeights.QuotaRisk,
+		},
+		LatencyBaselineMS:      cfg.LatencyBaselineMS,
+		QuotaRiskThreshold:     cfg.QuotaRiskThreshold,
+		MaxScorePenalty:        cfg.MaxScorePenalty,
+		StickySessionMode:      cfg.StickySessionMode,
+		StickyEscapeScoreRatio: cfg.StickyEscapeScoreRatio,
+		StickyEscapeLoadRate:   cfg.StickyEscapeLoadRate,
+		ActiveProbe: dto.GatewaySchedulingActiveProbeSettings{
+			AutoPauseEnabled: cfg.ActiveProbe.AutoPauseEnabled,
+			FailureThreshold: cfg.ActiveProbe.FailureThreshold,
+			PauseDuration:    cfg.ActiveProbe.PauseDuration.String(),
+			PauseDurationMax: cfg.ActiveProbe.PauseDurationMax.String(),
+		},
+		SlowStart: dto.GatewaySchedulingSlowStartSettings{
+			Enabled:  cfg.SlowStart.Enabled,
+			Duration: cfg.SlowStart.Duration.String(),
+			Penalty:  cfg.SlowStart.Penalty,
+		},
+	}
+}
+
+func applyGatewaySchedulingDTO(base config.GatewaySchedulingConfig, payload *dto.GatewaySchedulingSettings) (config.GatewaySchedulingConfig, error) {
+	if payload == nil {
+		return base, nil
+	}
+	cfg := base
+	cfg.ScoreWeights.Load = payload.ScoreWeights.Load
+	cfg.ScoreWeights.Queue = payload.ScoreWeights.Queue
+	cfg.ScoreWeights.Debt = payload.ScoreWeights.Debt
+	cfg.ScoreWeights.ErrorRate = payload.ScoreWeights.ErrorRate
+	cfg.ScoreWeights.Latency = payload.ScoreWeights.Latency
+	cfg.ScoreWeights.RateMultiplier = payload.ScoreWeights.RateMultiplier
+	cfg.ScoreWeights.QuotaRisk = payload.ScoreWeights.QuotaRisk
+	cfg.LatencyBaselineMS = payload.LatencyBaselineMS
+	cfg.QuotaRiskThreshold = payload.QuotaRiskThreshold
+	cfg.MaxScorePenalty = payload.MaxScorePenalty
+	cfg.StickySessionMode = payload.StickySessionMode
+	cfg.StickyEscapeScoreRatio = payload.StickyEscapeScoreRatio
+	cfg.StickyEscapeLoadRate = payload.StickyEscapeLoadRate
+	cfg.ActiveProbe.AutoPauseEnabled = payload.ActiveProbe.AutoPauseEnabled
+	cfg.ActiveProbe.FailureThreshold = payload.ActiveProbe.FailureThreshold
+	pauseDuration, err := time.ParseDuration(strings.TrimSpace(payload.ActiveProbe.PauseDuration))
+	if err != nil || pauseDuration <= 0 {
+		return cfg, fmt.Errorf("gateway_scheduling.active_probe.pause_duration must be a positive duration")
+	}
+	pauseDurationMax, err := time.ParseDuration(strings.TrimSpace(payload.ActiveProbe.PauseDurationMax))
+	if err != nil || pauseDurationMax <= 0 {
+		return cfg, fmt.Errorf("gateway_scheduling.active_probe.pause_duration_max must be a positive duration")
+	}
+	cfg.ActiveProbe.PauseDuration = pauseDuration
+	cfg.ActiveProbe.PauseDurationMax = pauseDurationMax
+	cfg.SlowStart.Enabled = payload.SlowStart.Enabled
+	slowStartDuration, err := time.ParseDuration(strings.TrimSpace(payload.SlowStart.Duration))
+	if err != nil || slowStartDuration <= 0 {
+		return cfg, fmt.Errorf("gateway_scheduling.slow_start.duration must be a positive duration")
+	}
+	cfg.SlowStart.Duration = slowStartDuration
+	cfg.SlowStart.Penalty = payload.SlowStart.Penalty
+	if cfg.ScoreWeights.Load < 0 || cfg.ScoreWeights.Queue < 0 || cfg.ScoreWeights.Debt < 0 || cfg.ScoreWeights.ErrorRate < 0 || cfg.ScoreWeights.Latency < 0 || cfg.ScoreWeights.RateMultiplier < 0 || cfg.ScoreWeights.QuotaRisk < 0 {
+		return cfg, fmt.Errorf("gateway_scheduling.score_weights must be non-negative")
+	}
+	if cfg.LatencyBaselineMS <= 0 || cfg.QuotaRiskThreshold < 0 || cfg.QuotaRiskThreshold > 1 || cfg.MaxScorePenalty < 0 {
+		return cfg, fmt.Errorf("gateway_scheduling numeric limits are invalid")
+	}
+	if cfg.StickySessionMode != config.GatewayStickySessionModeStrict && cfg.StickySessionMode != config.GatewayStickySessionModeSoft && cfg.StickySessionMode != config.GatewayStickySessionModeOff {
+		return cfg, fmt.Errorf("gateway_scheduling.sticky_session_mode is invalid")
+	}
+	if cfg.StickyEscapeScoreRatio < 1 || cfg.StickyEscapeLoadRate < 0 || cfg.StickyEscapeLoadRate > 100 {
+		return cfg, fmt.Errorf("gateway_scheduling sticky escape settings are invalid")
+	}
+	if cfg.ActiveProbe.FailureThreshold <= 0 || cfg.ActiveProbe.PauseDurationMax < cfg.ActiveProbe.PauseDuration || cfg.SlowStart.Penalty < 0 {
+		return cfg, fmt.Errorf("gateway_scheduling probe or slow-start settings are invalid")
+	}
+	return cfg, nil
 }
 
 // GetSettings 获取所有系统设置
@@ -274,33 +361,35 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		PaymentVisibleMethodAlipayEnabled:      settings.PaymentVisibleMethodAlipayEnabled,
 		PaymentVisibleMethodWxpayEnabled:       settings.PaymentVisibleMethodWxpayEnabled,
 		OpenAIAdvancedSchedulerEnabled:         settings.OpenAIAdvancedSchedulerEnabled,
+		GatewayScheduling:                      gatewaySchedulingToDTO(settings.GatewayScheduling),
 		BalanceLowNotifyEnabled:                settings.BalanceLowNotifyEnabled,
-		BalanceLowNotifyThreshold:              settings.BalanceLowNotifyThreshold,
-		BalanceLowNotifyRechargeURL:            settings.BalanceLowNotifyRechargeURL,
-		SubscriptionExpiryNotifyEnabled:        settings.SubscriptionExpiryNotifyEnabled,
-		AccountQuotaNotifyEnabled:              settings.AccountQuotaNotifyEnabled,
-		AccountQuotaNotifyEmails:               dto.NotifyEmailEntriesFromService(settings.AccountQuotaNotifyEmails),
-		PaymentEnabled:                         paymentCfg.Enabled,
-		PaymentMinAmount:                       paymentCfg.MinAmount,
-		PaymentMaxAmount:                       paymentCfg.MaxAmount,
-		PaymentDailyLimit:                      paymentCfg.DailyLimit,
-		PaymentOrderTimeoutMin:                 paymentCfg.OrderTimeoutMin,
-		PaymentMaxPendingOrders:                paymentCfg.MaxPendingOrders,
-		PaymentEnabledTypes:                    paymentCfg.EnabledTypes,
-		PaymentBalanceDisabled:                 paymentCfg.BalanceDisabled,
-		PaymentBalanceRechargeMultiplier:       paymentCfg.BalanceRechargeMultiplier,
-		PaymentRechargeFeeRate:                 paymentCfg.RechargeFeeRate,
-		PaymentLoadBalanceStrat:                paymentCfg.LoadBalanceStrategy,
-		PaymentProductNamePrefix:               paymentCfg.ProductNamePrefix,
-		PaymentProductNameSuffix:               paymentCfg.ProductNameSuffix,
-		PaymentHelpImageURL:                    paymentCfg.HelpImageURL,
-		PaymentHelpText:                        paymentCfg.HelpText,
-		PaymentCancelRateLimitEnabled:          paymentCfg.CancelRateLimitEnabled,
-		PaymentCancelRateLimitMax:              paymentCfg.CancelRateLimitMax,
-		PaymentCancelRateLimitWindow:           paymentCfg.CancelRateLimitWindow,
-		PaymentCancelRateLimitUnit:             paymentCfg.CancelRateLimitUnit,
-		PaymentCancelRateLimitMode:             paymentCfg.CancelRateLimitMode,
-		PaymentAlipayForceQRCode:               paymentCfg.AlipayForceQRCode,
+
+		BalanceLowNotifyThreshold:        settings.BalanceLowNotifyThreshold,
+		BalanceLowNotifyRechargeURL:      settings.BalanceLowNotifyRechargeURL,
+		SubscriptionExpiryNotifyEnabled:  settings.SubscriptionExpiryNotifyEnabled,
+		AccountQuotaNotifyEnabled:        settings.AccountQuotaNotifyEnabled,
+		AccountQuotaNotifyEmails:         dto.NotifyEmailEntriesFromService(settings.AccountQuotaNotifyEmails),
+		PaymentEnabled:                   paymentCfg.Enabled,
+		PaymentMinAmount:                 paymentCfg.MinAmount,
+		PaymentMaxAmount:                 paymentCfg.MaxAmount,
+		PaymentDailyLimit:                paymentCfg.DailyLimit,
+		PaymentOrderTimeoutMin:           paymentCfg.OrderTimeoutMin,
+		PaymentMaxPendingOrders:          paymentCfg.MaxPendingOrders,
+		PaymentEnabledTypes:              paymentCfg.EnabledTypes,
+		PaymentBalanceDisabled:           paymentCfg.BalanceDisabled,
+		PaymentBalanceRechargeMultiplier: paymentCfg.BalanceRechargeMultiplier,
+		PaymentRechargeFeeRate:           paymentCfg.RechargeFeeRate,
+		PaymentLoadBalanceStrat:          paymentCfg.LoadBalanceStrategy,
+		PaymentProductNamePrefix:         paymentCfg.ProductNamePrefix,
+		PaymentProductNameSuffix:         paymentCfg.ProductNameSuffix,
+		PaymentHelpImageURL:              paymentCfg.HelpImageURL,
+		PaymentHelpText:                  paymentCfg.HelpText,
+		PaymentCancelRateLimitEnabled:    paymentCfg.CancelRateLimitEnabled,
+		PaymentCancelRateLimitMax:        paymentCfg.CancelRateLimitMax,
+		PaymentCancelRateLimitWindow:     paymentCfg.CancelRateLimitWindow,
+		PaymentCancelRateLimitUnit:       paymentCfg.CancelRateLimitUnit,
+		PaymentCancelRateLimitMode:       paymentCfg.CancelRateLimitMode,
+		PaymentAlipayForceQRCode:         paymentCfg.AlipayForceQRCode,
 
 		ChannelMonitorEnabled:                settings.ChannelMonitorEnabled,
 		ChannelMonitorDefaultIntervalSeconds: settings.ChannelMonitorDefaultIntervalSeconds,
@@ -621,6 +710,9 @@ type UpdateSettingsRequest struct {
 	// OpenAI account scheduling
 	OpenAIAdvancedSchedulerEnabled *bool `json:"openai_advanced_scheduler_enabled"`
 
+	// Gateway scheduling policy
+	GatewayScheduling *dto.GatewaySchedulingSettings `json:"gateway_scheduling"`
+
 	// 余额不足提醒
 	BalanceLowNotifyEnabled         *bool                   `json:"balance_low_notify_enabled"`
 	BalanceLowNotifyThreshold       *float64                `json:"balance_low_notify_threshold"`
@@ -709,6 +801,14 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
+	}
+	gatewayScheduling := previousSettings.GatewayScheduling
+	if req.GatewayScheduling != nil {
+		gatewayScheduling, err = applyGatewaySchedulingDTO(previousSettings.GatewayScheduling, req.GatewayScheduling)
+		if err != nil {
+			response.BadRequest(c, err.Error())
+			return
+		}
 	}
 
 	// 验证参数
@@ -1808,6 +1908,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			}
 			return previousSettings.OpenAIAdvancedSchedulerEnabled
 		}(),
+		GatewayScheduling: gatewayScheduling,
 		BalanceLowNotifyEnabled: func() bool {
 			if req.BalanceLowNotifyEnabled != nil {
 				return *req.BalanceLowNotifyEnabled
@@ -2181,6 +2282,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		PaymentVisibleMethodAlipayEnabled:      updatedSettings.PaymentVisibleMethodAlipayEnabled,
 		PaymentVisibleMethodWxpayEnabled:       updatedSettings.PaymentVisibleMethodWxpayEnabled,
 		OpenAIAdvancedSchedulerEnabled:         updatedSettings.OpenAIAdvancedSchedulerEnabled,
+		GatewayScheduling:                      gatewaySchedulingToDTO(updatedSettings.GatewayScheduling),
 		BalanceLowNotifyEnabled:                updatedSettings.BalanceLowNotifyEnabled,
 		BalanceLowNotifyThreshold:              updatedSettings.BalanceLowNotifyThreshold,
 		BalanceLowNotifyRechargeURL:            updatedSettings.BalanceLowNotifyRechargeURL,

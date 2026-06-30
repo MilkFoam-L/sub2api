@@ -115,3 +115,50 @@
 - `backend/internal/service/scheduled_test_runner_service_test.go`：新增暂停时长递增回归测试。
 - `progress.md`：追加本轮审查、修复和验证说明。
 - 回滚方式：回退 `scheduled_test_runner_service.go` 中读取最近结果数量的修改，并删除 `TestScheduledTestRunnerActiveProbePauseDurationGrowsWithConsecutiveFailures` 回归测试；如需恢复审查前日志，从 `progress.md` 末尾移除本轮记录。
+
+## 2026-06-28 - Task: 新增后台调度策略设置
+### What was done
+- 在后台系统设置的网关页新增“调度策略”配置卡片，覆盖多目标评分权重、延迟/额度阈值、粘性会话、主动探活暂停和恢复慢启动参数。
+- 扩展 Admin settings GET/PUT DTO 和服务层设置项，将调度策略保存到已有 settings 表，并让运行时调度优先读取后台覆盖值，未配置时回退配置文件/环境变量。
+- 将 GatewayService 和 ScheduledTestRunnerService 接入后台调度策略读取，使请求级调度和主动探活暂停均可使用后台配置。
+- 更新调度优化文档，说明后台调度策略入口、可配置项、运行时读取方式和回滚方式。
+
+### Testing
+- 红灯验证：新增服务测试后，`go test` 曾因 `GetGatewaySchedulingConfig`、`gateway_scheduling` DTO、运行时设置覆盖等尚未实现而失败。
+- 通过：`GOCACHE="C:/Users/MilkFoam/Desktop/AI/sub2api/.gocache" go test ./internal/service -run 'TestSettingServiceGatewayScheduling|TestScheduler|TestScheduledTestRunner'`。
+- 通过：`GOCACHE="C:/Users/MilkFoam/Desktop/AI/sub2api/.gocache" go test ./internal/handler/admin -run 'TestSettingHandler'`。
+- 通过：`GOCACHE="C:/Users/MilkFoam/Desktop/AI/sub2api/.gocache" go test ./internal/service ./internal/config ./internal/handler ./cmd/server`。
+- 通过：`pnpm run typecheck`。
+- 通过：`pnpm run build`，仅保留 Vite 既有 chunk/dynamic import 警告。
+
+### Notes
+- `backend/internal/service/gateway_scheduling_settings.go`：新增后台调度策略 settings 读取、解析、校验和写入映射。
+- `backend/internal/service/setting_service_gateway_scheduling_test.go`：新增调度策略默认值、DB 覆盖和非法值回退测试。
+- `backend/internal/service/setting_service.go`、`settings_view.go`、`domain_constants.go`：扩展调度策略设置项、系统设置视图和缓存刷新。
+- `backend/internal/handler/admin/setting_handler.go`、`backend/internal/handler/dto/settings.go`：暴露 `gateway_scheduling` GET/PUT 字段并做保存校验。
+- `backend/internal/service/gateway_service.go`：普通网关调度优先读取后台调度策略覆盖值。
+- `backend/internal/service/scheduled_test_runner_service.go`：主动探活暂停和 slow-start 配置优先读取后台调度策略覆盖值。
+- `backend/internal/service/wire.go`、`backend/cmd/server/wire_gen.go`：同步设置服务依赖注入。
+- `frontend/src/api/admin/settings.ts`：新增调度策略类型和设置请求/响应类型。
+- `frontend/src/views/admin/SettingsView.vue`：新增后台“调度策略”配置卡片并接入保存 payload。
+- `docs/SCHEDULER_OPTIMIZATION_NOTES.md`：补充后台调度策略设置说明。
+- `progress.md`：追加本轮实现、验证和回滚说明。
+- 回滚方式：后台层可清空或恢复 settings 表中的 `gateway_scheduling_*` 设置项；代码层面可回退上述后端 settings、handler、wire、前端设置页、文档和日志改动；运行时会在无后台设置时回退配置文件/环境变量。
+
+## 2026-06-29 - Task: 构建并推送后台调度策略镜像
+### What was done
+- 基于当前未提交工作区构建 Docker release 镜像，镜像 commit 标识使用 `35349fc2-dirty`，避免与纯净提交镜像混淆。
+- 推送腾讯云 CCR 镜像版本 tag：`ccr.ccs.tencentyun.com/apophis-chat/sub2api:0.1.139-35349fc2-dirty-20260629052908`。
+- 同步更新并推送 `ccr.ccs.tencentyun.com/apophis-chat/sub2api:latest`。
+- 本地 `.docker-last-tag` 已记录本次镜像 tag。
+
+### Testing
+- Docker 构建通过：前端 `pnpm run build`、后端 Go release build、最终镜像构建均成功。
+- 腾讯云 CCR 推送完成：版本 tag 与 `latest` 均推送成功。
+- 远端 manifest digest 已核验一致：`sha256:f081465b39a6176aca8fcf61f06d594ef9f7f5fc199d5fa81c493d0d42600005`。
+- 构建过程中仅出现 Vite 既有 dynamic import/chunk size 警告、Browserslist 数据提示和 Docker legacy builder 提示，未阻断构建。
+
+### Notes
+- `.docker-last-tag`：记录本次镜像 tag `0.1.139-35349fc2-dirty-20260629052908`，仅作本地发布记录。
+- `progress.md`：追加本轮构建、推送、验证和回滚说明。
+- 回滚方式：部署端可将镜像 tag 回切到上一次已知可用版本 `0.1.139-34d011c5-20260626223230`；如需恢复本地发布记录，可将 `.docker-last-tag` 改回该 tag，并从 `progress.md` 末尾移除本轮 `2026-06-29` 记录。

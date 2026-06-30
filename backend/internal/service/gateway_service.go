@@ -1681,7 +1681,7 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 		"session", shortSessionHash(sessionHash),
 		"excluded_ids", excludedIDsList)
 
-	cfg := s.schedulingConfig()
+	cfg := s.schedulingConfig(ctx)
 
 	// 检查 Claude Code 客户端限制（可能会替换 groupID 为降级分组）
 	group, groupID, err := s.checkClaudeCodeRestriction(ctx, groupID)
@@ -2389,8 +2389,15 @@ func (s *GatewayService) tryAcquireByLegacyOrder(ctx context.Context, candidates
 	return nil, false, nil
 }
 
-func (s *GatewayService) schedulingConfig() config.GatewaySchedulingConfig {
-	if s.cfg != nil {
+func (s *GatewayService) schedulingConfig(ctx context.Context) config.GatewaySchedulingConfig {
+	if s != nil && s.settingService != nil {
+		if cfg, err := s.settingService.GetGatewaySchedulingConfig(ctx); err == nil {
+			return normalizeGatewaySchedulingConfig(cfg)
+		} else {
+			slog.Warn("gateway_scheduling_settings_fallback", "error", err)
+		}
+	}
+	if s != nil && s.cfg != nil {
 		return normalizeGatewaySchedulingConfig(s.cfg.Gateway.Scheduling)
 	}
 	return defaultGatewaySchedulingConfig()
@@ -3024,7 +3031,7 @@ func (s *GatewayService) hydrateSelectedAccount(ctx context.Context, account *Ac
 
 func (s *GatewayService) newSelectionResult(ctx context.Context, account *Account, acquired bool, release func(), waitPlan *AccountWaitPlan) (*AccountSelectionResult, error) {
 	if s != nil && s.concurrencyService != nil && account != nil {
-		_ = s.concurrencyService.RecordAccountSelection(ctx, account.ID, accountSelectionDebtTTL(s.schedulingConfig()))
+		_ = s.concurrencyService.RecordAccountSelection(ctx, account.ID, accountSelectionDebtTTL(s.schedulingConfig(ctx)))
 	}
 	hydrated, err := s.hydrateSelectedAccount(ctx, account)
 	if err != nil {

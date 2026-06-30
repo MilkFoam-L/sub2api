@@ -30,6 +30,41 @@ type CustomEndpoint struct {
 	Description string `json:"description"`
 }
 
+type GatewaySchedulingScoreWeights struct {
+	Load           float64 `json:"load"`
+	Queue          float64 `json:"queue"`
+	Debt           float64 `json:"debt"`
+	ErrorRate      float64 `json:"error_rate"`
+	Latency        float64 `json:"latency"`
+	RateMultiplier float64 `json:"rate_multiplier"`
+	QuotaRisk      float64 `json:"quota_risk"`
+}
+
+type GatewaySchedulingActiveProbeSettings struct {
+	AutoPauseEnabled bool   `json:"auto_pause_enabled"`
+	FailureThreshold int    `json:"failure_threshold"`
+	PauseDuration    string `json:"pause_duration"`
+	PauseDurationMax string `json:"pause_duration_max"`
+}
+
+type GatewaySchedulingSlowStartSettings struct {
+	Enabled  bool    `json:"enabled"`
+	Duration string  `json:"duration"`
+	Penalty  float64 `json:"penalty"`
+}
+
+type GatewaySchedulingSettings struct {
+	ScoreWeights           GatewaySchedulingScoreWeights        `json:"score_weights"`
+	LatencyBaselineMS      int                                  `json:"latency_baseline_ms"`
+	QuotaRiskThreshold     float64                              `json:"quota_risk_threshold"`
+	MaxScorePenalty        float64                              `json:"max_score_penalty"`
+	StickySessionMode      string                               `json:"sticky_session_mode"`
+	StickyEscapeScoreRatio float64                              `json:"sticky_escape_score_ratio"`
+	StickyEscapeLoadRate   int                                  `json:"sticky_escape_load_rate"`
+	ActiveProbe            GatewaySchedulingActiveProbeSettings `json:"active_probe"`
+	SlowStart              GatewaySchedulingSlowStartSettings   `json:"slow_start"`
+}
+
 // SystemSettings represents the admin settings API response payload.
 type SystemSettings struct {
 	RegistrationEnabled              bool                     `json:"registration_enabled"`
@@ -215,6 +250,9 @@ type SystemSettings struct {
 
 	// OpenAI account scheduling
 	OpenAIAdvancedSchedulerEnabled bool `json:"openai_advanced_scheduler_enabled"`
+
+	// Gateway scheduling policy
+	GatewayScheduling GatewaySchedulingSettings `json:"gateway_scheduling"`
 
 	// Payment configuration
 	PaymentEnabled                   bool     `json:"payment_enabled"`

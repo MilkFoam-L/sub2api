@@ -361,6 +361,37 @@ export type OpenAIImagesResponsesReasoningEffort =
   | "high"
   | "xhigh";
 
+export interface GatewaySchedulingScoreWeights {
+  load: number;
+  queue: number;
+  debt: number;
+  error_rate: number;
+  latency: number;
+  rate_multiplier: number;
+  quota_risk: number;
+}
+
+export interface GatewaySchedulingSettings {
+  score_weights: GatewaySchedulingScoreWeights;
+  latency_baseline_ms: number;
+  quota_risk_threshold: number;
+  max_score_penalty: number;
+  sticky_session_mode: "strict" | "soft" | "off" | string;
+  sticky_escape_score_ratio: number;
+  sticky_escape_load_rate: number;
+  active_probe: {
+    auto_pause_enabled: boolean;
+    failure_threshold: number;
+    pause_duration: string;
+    pause_duration_max: string;
+  };
+  slow_start: {
+    enabled: boolean;
+    duration: string;
+    penalty: number;
+  };
+}
+
 export interface SystemSettings {
   // Registration settings
   registration_enabled: boolean;
@@ -612,8 +643,10 @@ export interface SystemSettings {
   payment_visible_method_alipay_enabled?: boolean;
   payment_visible_method_wxpay_enabled?: boolean;
   openai_advanced_scheduler_enabled?: boolean;
+  gateway_scheduling: GatewaySchedulingSettings;
 
   // 余额、订阅到期与账号限额通知
+
   balance_low_notify_enabled: boolean;
   balance_low_notify_threshold: number;
   balance_low_notify_recharge_url: string;
@@ -634,7 +667,6 @@ export interface SystemSettings {
   // OpenAI fast/flex policy
   openai_fast_policy_settings?: OpenAIFastPolicySettings;
 
-  // Allow user view error requests
   allow_user_view_error_requests: boolean;
 }
 
@@ -646,7 +678,7 @@ export interface UpdateSettingsRequest {
   password_reset_enabled?: boolean;
   frontend_url?: string;
   invitation_code_enabled?: boolean;
-  totp_enabled?: boolean; // TOTP 双因素认证
+  totp_enabled?: boolean;
   login_agreement_enabled?: boolean;
   login_agreement_mode?: "modal" | "checkbox" | string;
   login_agreement_updated_at?: string;
@@ -695,7 +727,6 @@ export interface UpdateSettingsRequest {
   auth_source_default_google_grant_on_signup?: boolean;
   auth_source_default_google_grant_on_first_bind?: boolean;
   force_email_on_third_party_signup?: boolean;
-  // ── 平台限额（嵌套 JSON，系统层 + 7 auth-source 层）────────────────────────────────
   default_platform_quotas?: DefaultPlatformQuotasMap;
   auth_source_default_email_platform_quotas?: DefaultPlatformQuotasMap;
   auth_source_default_linuxdo_platform_quotas?: DefaultPlatformQuotasMap;
@@ -821,21 +852,16 @@ export interface UpdateSettingsRequest {
   antigravity_user_agent_version?: string;
   openai_images_responses_reasoning_effort?: OpenAIImagesResponsesReasoningEffort;
   openai_codex_user_agent?: string;
-  // codex_cli_only 加固
   min_codex_version?: string;
   max_codex_version?: string;
   codex_cli_only_blacklist?: string;
   codex_cli_only_whitelist?: string;
   codex_cli_only_allow_app_server_clients?: boolean;
   codex_cli_only_engine_fingerprint_signals?: string;
-  // Payment configuration
   payment_enabled?: boolean;
   risk_control_enabled?: boolean;
-
-  // Cyber session block
   cyber_session_block_enabled?: boolean;
   cyber_session_block_ttl_seconds?: number;
-
   payment_min_amount?: number;
   payment_max_amount?: number;
   payment_daily_limit?: number;
@@ -861,27 +887,18 @@ export interface UpdateSettingsRequest {
   payment_visible_method_alipay_enabled?: boolean;
   payment_visible_method_wxpay_enabled?: boolean;
   openai_advanced_scheduler_enabled?: boolean;
-  // 余额、订阅到期与账号限额通知
+  gateway_scheduling?: GatewaySchedulingSettings;
   balance_low_notify_enabled?: boolean;
   balance_low_notify_threshold?: number;
   balance_low_notify_recharge_url?: string;
   subscription_expiry_notify_enabled?: boolean;
   account_quota_notify_enabled?: boolean;
   account_quota_notify_emails?: NotifyEmailEntry[];
-
-  // Channel Monitor feature switch
   channel_monitor_enabled?: boolean;
   channel_monitor_default_interval_seconds?: number;
-
-  // Available Channels feature switch
   available_channels_enabled?: boolean;
-
-  // Affiliate (邀请返利) feature switch
   affiliate_enabled?: boolean;
-
-  // OpenAI fast/flex policy
   openai_fast_policy_settings?: OpenAIFastPolicySettings;
-
   allow_user_view_error_requests?: boolean;
 }
 

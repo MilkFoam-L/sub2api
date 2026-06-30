@@ -214,6 +214,12 @@ type SettingService struct {
 	// instance owns its own cache, no shared package-level state.
 	openAIQuotaAutoPauseSettingsCache atomic.Value // *cachedOpenAIQuotaAutoPauseSettings
 	openAIQuotaAutoPauseSettingsSF    singleflight.Group
+	gatewaySchedulingSettingsCache    atomic.Value // *cachedGatewaySchedulingSettings
+}
+
+type cachedGatewaySchedulingSettings struct {
+	cfg       config.GatewaySchedulingConfig
+	expiresAt int64
 }
 
 // DefaultPlatformQuotaSetting 单 platform 三档限额（nil = 沿用上层；0 = 显式禁用；>0 = 上限）
@@ -2267,6 +2273,9 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	updates[SettingPaymentVisibleMethodAlipayEnabled] = strconv.FormatBool(settings.PaymentVisibleMethodAlipayEnabled)
 	updates[SettingPaymentVisibleMethodWxpayEnabled] = strconv.FormatBool(settings.PaymentVisibleMethodWxpayEnabled)
 	updates[openAIAdvancedSchedulerSettingKey] = strconv.FormatBool(settings.OpenAIAdvancedSchedulerEnabled)
+	for key, value := range gatewaySchedulingSettingsToMap(settings) {
+		updates[key] = value
+	}
 
 	// 余额、订阅到期与账号限额通知
 	updates[SettingKeyBalanceLowNotifyEnabled] = strconv.FormatBool(settings.BalanceLowNotifyEnabled)
@@ -2415,6 +2424,10 @@ func (s *SettingService) refreshCachedSettings(settings *SystemSettings) {
 	openAIAdvancedSchedulerSettingCache.Store(&cachedOpenAIAdvancedSchedulerSetting{
 		enabled:   settings.OpenAIAdvancedSchedulerEnabled,
 		expiresAt: time.Now().Add(openAIAdvancedSchedulerSettingCacheTTL).UnixNano(),
+	})
+	s.gatewaySchedulingSettingsCache.Store(&cachedGatewaySchedulingSettings{
+		cfg:       normalizeGatewaySchedulingConfig(settings.GatewayScheduling),
+		expiresAt: time.Now().Add(gatewaySchedulingSettingsCacheTTL).UnixNano(),
 	})
 	// Invalidate the quota auto-pause cache and let the next read trigger a fresh load.
 	// We can't know from here whether ops_advanced_settings was also touched, so be
@@ -3789,6 +3802,15 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 	result.PaymentVisibleMethodAlipayEnabled = settings[SettingPaymentVisibleMethodAlipayEnabled] == "true"
 	result.PaymentVisibleMethodWxpayEnabled = settings[SettingPaymentVisibleMethodWxpayEnabled] == "true"
 	result.OpenAIAdvancedSchedulerEnabled = settings[openAIAdvancedSchedulerSettingKey] == "true"
+	baseScheduling := config.GatewaySchedulingConfig{}
+	if s.cfg != nil {
+		baseScheduling = s.cfg.Gateway.Scheduling
+	}
+	if gatewayScheduling, err := applyGatewaySchedulingSettings(baseScheduling, settings); err == nil {
+		result.GatewayScheduling = gatewayScheduling
+	} else {
+		result.GatewayScheduling = normalizeGatewaySchedulingConfig(baseScheduling)
+	}
 
 	// 余额、订阅到期与账号限额通知
 	result.BalanceLowNotifyEnabled = settings[SettingKeyBalanceLowNotifyEnabled] == "true"

@@ -476,6 +476,28 @@ const (
 	SettingKeyAccountQuotaNotifyEnabled = "account_quota_notify_enabled" // 全局开关
 	SettingKeyAccountQuotaNotifyEmails  = "account_quota_notify_emails"  // 管理员通知邮箱列表（JSON 数组）
 
+	// Gateway scheduling policy settings
+	SettingKeyGatewaySchedulingScoreWeightLoad             = "gateway_scheduling_score_weight_load"
+	SettingKeyGatewaySchedulingScoreWeightQueue            = "gateway_scheduling_score_weight_queue"
+	SettingKeyGatewaySchedulingScoreWeightDebt             = "gateway_scheduling_score_weight_debt"
+	SettingKeyGatewaySchedulingScoreWeightErrorRate        = "gateway_scheduling_score_weight_error_rate"
+	SettingKeyGatewaySchedulingScoreWeightLatency          = "gateway_scheduling_score_weight_latency"
+	SettingKeyGatewaySchedulingScoreWeightRateMultiplier   = "gateway_scheduling_score_weight_rate_multiplier"
+	SettingKeyGatewaySchedulingScoreWeightQuotaRisk        = "gateway_scheduling_score_weight_quota_risk"
+	SettingKeyGatewaySchedulingLatencyBaselineMS           = "gateway_scheduling_latency_baseline_ms"
+	SettingKeyGatewaySchedulingQuotaRiskThreshold          = "gateway_scheduling_quota_risk_threshold"
+	SettingKeyGatewaySchedulingMaxScorePenalty             = "gateway_scheduling_max_score_penalty"
+	SettingKeyGatewaySchedulingStickySessionMode           = "gateway_scheduling_sticky_session_mode"
+	SettingKeyGatewaySchedulingStickyEscapeScoreRatio      = "gateway_scheduling_sticky_escape_score_ratio"
+	SettingKeyGatewaySchedulingStickyEscapeLoadRate        = "gateway_scheduling_sticky_escape_load_rate"
+	SettingKeyGatewaySchedulingActiveProbeAutoPause        = "gateway_scheduling_active_probe_auto_pause_enabled"
+	SettingKeyGatewaySchedulingActiveProbeFailureThreshold = "gateway_scheduling_active_probe_failure_threshold"
+	SettingKeyGatewaySchedulingActiveProbePauseDuration    = "gateway_scheduling_active_probe_pause_duration"
+	SettingKeyGatewaySchedulingActiveProbePauseDurationMax = "gateway_scheduling_active_probe_pause_duration_max"
+	SettingKeyGatewaySchedulingSlowStartEnabled            = "gateway_scheduling_slow_start_enabled"
+	SettingKeyGatewaySchedulingSlowStartDuration           = "gateway_scheduling_slow_start_duration"
+	SettingKeyGatewaySchedulingSlowStartPenalty            = "gateway_scheduling_slow_start_penalty"
+
 	// Web Search Emulation
 	SettingKeyWebSearchEmulationConfig = "web_search_emulation_config" // JSON 配置
 )
