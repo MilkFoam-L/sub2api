@@ -196,3 +196,20 @@
 - `backend/cmd/server/VERSION`：同步运行时版本号为 `0.1.140`。
 - `progress.md`：追加本轮版本同步、验证和回滚说明。
 - 回滚方式：将 `backend/cmd/server/VERSION` 改回 `0.1.139`，并从 `progress.md` 末尾移除本轮 `2026-06-29` 记录。
+
+## 2026-06-29 - Task: 合并上游 v0.1.141 并同步版本
+### What was done
+- 将上游 `Wei-Shaw/sub2api` 的 `v0.1.141` release tag 合并到当前 `main` 分支。
+- 同步运行时版本号为 `0.1.141`。
+- 吸收上游 usage request type 统计、用户用量视图、支付页和相关后端 API 更新。
+
+### Testing
+- 通过：`GOCACHE="C:/Users/MilkFoam/Desktop/AI/sub2api/.gocache" go test ./internal/config ./internal/handler ./internal/server ./internal/service ./cmd/server`。
+- 通过：`pnpm run build`，仅保留 Vite 既有 dynamic import/chunk size 警告和 Browserslist 数据提示。
+
+### Notes
+- `backend/cmd/server/VERSION`：同步运行时版本号为 `0.1.141`。
+- `backend/`：合并 v0.1.141 用量统计、DTO、仓储、服务和路由更新。
+- `frontend/`：合并 v0.1.141 用量页、图表、支付页和 API 类型更新。
+- `progress.md`：追加本轮合并、版本同步、验证和回滚说明。
+- 回滚方式：对本轮合并提交执行 `git revert -m 1 <merge_commit>`；若只需回退版本号，将 `backend/cmd/server/VERSION` 改回 `0.1.140`。
