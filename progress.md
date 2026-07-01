@@ -231,3 +231,22 @@
 - `.docker-last-tag`：记录本次镜像 tag `0.1.141-2842015b-20260701031614`，仅作本地发布记录。
 - `progress.md`：追加本轮构建、推送、验证和回滚说明。
 - 回滚方式：部署端可将镜像 tag 回切到上一次已知可用版本；代码层面可回退到提交 `2842015b` 之前的版本，或对本轮日志提交执行 `git revert`。
+
+## 2026-07-01 - Task: 合并上游 v0.1.142 并同步版本
+### What was done
+- 将上游 `Wei-Shaw/sub2api` 的 `v0.1.142` release tag 合并到当前 `main` 分支。
+- 解决 OpenAI 模型列表、账号仓储测试、GPT-5.5 计费兜底、系统默认设置和账号菜单的合并冲突。
+- 同步运行时版本号为 `0.1.142`。
+- 吸收上游 Spark shadow、dateline normalization、Grok media、账号影子凭据、订阅/账号相关更新。
+
+### Testing
+- 通过：`GOCACHE="C:/Users/MilkFoam/Desktop/AI/sub2api/.gocache" go test ./internal/config ./internal/handler ./internal/server ./internal/service ./cmd/server`。
+- 通过：`pnpm run build`，仅保留 Vite 既有 dynamic import/chunk size 警告和 Browserslist 数据提示。
+- 通过：`git diff --check`，未发现冲突标记或空白错误。
+
+### Notes
+- `backend/cmd/server/VERSION`：同步运行时版本号为 `0.1.142`。
+- `backend/`：合并 v0.1.142 后端模型、账号、影子路由、Grok media、订阅和配置更新。
+- `frontend/`：合并 v0.1.142 前端账号管理、Spark shadow、登录/注册和多语言更新。
+- `progress.md`：追加本轮合并、版本同步、验证和回滚说明。
+- 回滚方式：对本轮合并提交执行 `git revert -m 1 <merge_commit>`；若只需回退版本号，将 `backend/cmd/server/VERSION` 改回 `0.1.141`。
