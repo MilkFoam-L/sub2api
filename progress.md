@@ -213,3 +213,21 @@
 - `frontend/`：合并 v0.1.141 用量页、图表、支付页和 API 类型更新。
 - `progress.md`：追加本轮合并、版本同步、验证和回滚说明。
 - 回滚方式：对本轮合并提交执行 `git revert -m 1 <merge_commit>`；若只需回退版本号，将 `backend/cmd/server/VERSION` 改回 `0.1.140`。
+
+## 2026-07-01 - Task: 构建并推送 v0.1.141 腾讯云镜像
+### What was done
+- 基于当前干净提交 `2842015b` 构建 Docker release 镜像，运行时版本为 `0.1.141`。
+- 推送腾讯云 CCR 镜像版本 tag：`ccr.ccs.tencentyun.com/apophis-chat/sub2api:0.1.141-2842015b-20260701031614`。
+- 同步更新并推送 `ccr.ccs.tencentyun.com/apophis-chat/sub2api:latest`。
+- 本地 `.docker-last-tag` 记录本次镜像 tag；该文件不提交。
+
+### Testing
+- Docker 构建通过：前端 `pnpm run build`、后端 Go release build、最终镜像构建均成功。
+- 腾讯云 CCR 推送完成：版本 tag 与 `latest` 均推送成功。
+- 远端 manifest digest 已核验一致：`sha256:9955e634d7a99b8b2279e65453287392d35a3fc482db21478a3bdc3a8124b8ad`。
+- 构建过程中仅出现 Vite 既有 dynamic import/chunk size 警告、Browserslist 数据提示、Node deprecation 提示和 Docker legacy builder 提示，未阻断构建。
+
+### Notes
+- `.docker-last-tag`：记录本次镜像 tag `0.1.141-2842015b-20260701031614`，仅作本地发布记录。
+- `progress.md`：追加本轮构建、推送、验证和回滚说明。
+- 回滚方式：部署端可将镜像 tag 回切到上一次已知可用版本；代码层面可回退到提交 `2842015b` 之前的版本，或对本轮日志提交执行 `git revert`。
