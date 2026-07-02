@@ -250,3 +250,23 @@
 - `frontend/`：合并 v0.1.142 前端账号管理、Spark shadow、登录/注册和多语言更新。
 - `progress.md`：追加本轮合并、版本同步、验证和回滚说明。
 - 回滚方式：对本轮合并提交执行 `git revert -m 1 <merge_commit>`；若只需回退版本号，将 `backend/cmd/server/VERSION` 改回 `0.1.141`。
+
+## 2026-07-02 - Task: 合并上游 v0.1.143 并同步版本
+### What was done
+- 将上游 `Wei-Shaw/sub2api` 的 `v0.1.143` release tag 合并到当前 `main` 分支。
+- 解决配置、API Key 认证缓存快照和 OpenAI OAuth 透传测试的合并冲突。
+- 同步运行时版本号为 `0.1.143`。
+- 吸收上游分组高峰倍率、IP 地理展示、OpenAI compact 模型降级配置、Anthropic API Key 认证、Grok media 分组开关和订阅/用量相关更新。
+
+### Testing
+- 通过：`GOCACHE="C:/Users/MilkFoam/Desktop/AI/sub2api/.gocache" go test ./internal/config ./internal/handler ./internal/server ./internal/service ./cmd/server`。
+- 通过：`pnpm run build`，仅保留 Vite 既有 dynamic import/chunk size 警告和 Browserslist 数据提示。
+- 通过：`git diff --check`，未发现空白错误或未清理的冲突标记。
+
+### Notes
+- `backend/cmd/server/VERSION`：同步运行时版本号为 `0.1.143`。
+- `backend/`：合并 v0.1.143 后端配置、分组高峰倍率、Anthropic API Key、用量统计、OpenAI/Grok/订阅和缓存快照更新。
+- `frontend/`：合并 v0.1.143 前端分组高峰倍率、IP 地理展示、订阅、用量、账号与多语言更新。
+- `deploy/`：合并示例环境变量和示例配置中的新增开关。
+- `progress.md`：追加本轮合并、版本同步、验证和回滚说明。
+- 回滚方式：对本轮合并提交执行 `git revert -m 1 <merge_commit>`；若只需回退版本号，将 `backend/cmd/server/VERSION` 改回 `0.1.142`。
