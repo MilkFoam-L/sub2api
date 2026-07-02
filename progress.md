@@ -270,3 +270,19 @@
 - `deploy/`：合并示例环境变量和示例配置中的新增开关。
 - `progress.md`：追加本轮合并、版本同步、验证和回滚说明。
 - 回滚方式：对本轮合并提交执行 `git revert -m 1 <merge_commit>`；若只需回退版本号，将 `backend/cmd/server/VERSION` 改回 `0.1.142`。
+
+## 2026-07-02 - Task: 构建并推送 v0.1.143 腾讯云镜像
+### What was done
+- 基于当前提交 `0688f39a` 构建 Docker release 镜像，运行时版本为 `0.1.143`。
+- 推送腾讯云 CCR 镜像版本 tag：`ccr.ccs.tencentyun.com/apophis-chat/sub2api:0.1.143-0688f39a-20260703010526`。
+- 同步更新并推送 `ccr.ccs.tencentyun.com/apophis-chat/sub2api:latest`。
+
+### Testing
+- Docker 构建通过：前端 `pnpm run build`、后端 Go release build、最终镜像构建均成功。
+- 腾讯云 CCR 推送完成：版本 tag 与 `latest` 均推送成功。
+- 远端 manifest digest 已返回一致：`sha256:febc15bfd4bdb3253dc8020092145fcf6c50118b35eefc7e2c9b7758f44a8d3c`。
+- 构建过程中仅出现 Docker legacy builder 提示，未阻断构建；前端构建复用缓存。
+
+### Notes
+- `progress.md`：追加本轮构建、推送、验证和回滚说明。
+- 回滚方式：部署端可将镜像 tag 回切到上一次已知可用版本；代码层面可回退到提交 `0688f39a` 之前的版本，或对本轮日志提交执行 `git revert`。
