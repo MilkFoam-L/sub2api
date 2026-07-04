@@ -391,6 +391,13 @@ export interface GatewaySchedulingSettings {
     duration: string;
     penalty: number;
   };
+  upstream_rate: {
+    enabled: boolean;
+    stale_ttl_seconds: number;
+    rate_weight: number;
+    health_weight: number;
+    min_success_rate: number;
+  };
 }
 
 export interface SystemSettings {

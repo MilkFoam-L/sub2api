@@ -508,3 +508,62 @@ gateway:
 - 后台层：在调度面板清空优先账号并恢复默认调度参数后保存。
 - 设置层：清空 settings 表中的 `gateway_scheduling_*` 设置项，运行时会回退到配置文件或环境变量。
 - 代码层：回退调度面板前端页面、Scheduling API/handler、调度日志服务、`PreferredAccountID` 配置字段和调度排序接入。
+
+## 已落地：上游倍率源与可用率检测
+
+本轮新增上游倍率能力，采用轻量内置方案，不直接照搬外部管理器写回账号配置的模式。
+
+### 设计原则
+
+```text
+上游倍率源
+-> 倍率快照
+-> 可用率检测
+-> 分组/账号绑定
+-> 成本信号
+-> 默认只展示
+-> 开启后作为 Weighted P2C 软成本
+```
+
+关键边界：
+
+- 不在请求热路径访问外部上游。
+- 不自动修改账号 `priority`。
+- 不自动覆盖账号 `rate_multiplier`。
+- 默认不参与调度，只有调度面板开启“上游倍率软信号”后才影响评分。
+- 快照缺失或过期时回到中性信号，不阻断请求。
+
+### 上游状态检测
+
+上游倍率源会记录同步健康检查，调度面板展示最近 1 小时可用率、平均延迟、最近同步状态和最近错误。检测范围只包含倍率/分组接口，不发送真实模型请求，避免产生上游费用。
+
+### 调度接入方式
+
+开启后，上游倍率只增加同 priority 层内 Weighted P2C 的软成本：
+
+```text
+ratePenalty = max(0, effective_rate - 1) * rate_weight
+healthPenalty = max(0, min_success_rate - success_rate) * health_weight
+```
+
+最终惩罚仍受 `max_score_penalty` 限制。硬过滤、粘性会话、优先账号、RPM、额度、并发槽位和模型能力过滤仍优先生效。
+
+### 回滚与降级
+
+运行时快速降级：
+
+```text
+调度面板关闭“上游倍率软信号”
+```
+
+数据侧禁用：
+
+```text
+UPDATE upstream_rate_sources SET enabled = false, use_for_scheduling = false;
+```
+
+代码回滚：
+
+```text
+git revert <feature_commit>
+```

@@ -96,9 +96,10 @@ type forceCacheBillingKeyType struct{}
 
 // accountWithLoad 账号与负载信息的组合，用于负载感知调度
 type accountWithLoad struct {
-	account      *Account
-	loadInfo     *AccountLoadInfo
-	runtimeStats *schedulerAccountRuntimeSnapshot
+	account            *Account
+	loadInfo           *AccountLoadInfo
+	runtimeStats       *schedulerAccountRuntimeSnapshot
+	upstreamRateSignal *UpstreamRateSignalSnapshot
 }
 
 var ForceCacheBillingContextKey = forceCacheBillingKeyType{}
@@ -2790,7 +2791,40 @@ func (s *GatewayService) accountWithRuntimeLoad(account *Account, loadInfo *Acco
 	if s != nil && s.runtimeStats != nil && account != nil {
 		item.runtimeStats = s.runtimeStats.snapshot(account.ID)
 	}
+	if s != nil && account != nil {
+		if signal, ok := upstreamRateSignalFromContext(context.Background(), account.ID, s.currentSchedulingConfig()); ok {
+			item.upstreamRateSignal = &signal
+		}
+	}
 	return item
+}
+
+func (s *GatewayService) currentSchedulingConfig() config.GatewaySchedulingConfig {
+	if s == nil || s.settingService == nil {
+		return defaultGatewaySchedulingConfig()
+	}
+	cfg, err := s.settingService.GetGatewaySchedulingConfig(context.Background())
+	if err != nil {
+		return defaultGatewaySchedulingConfig()
+	}
+	return cfg
+}
+
+func upstreamRateSignalFromContext(ctx context.Context, accountID int64, cfg config.GatewaySchedulingConfig) (UpstreamRateSignalSnapshot, bool) {
+	cfg = normalizeGatewaySchedulingConfig(cfg)
+	if !cfg.UpstreamRate.Enabled || accountID <= 0 {
+		return UpstreamRateSignalSnapshot{}, false
+	}
+	provider := DefaultUpstreamRateSignalProvider()
+	if provider == nil {
+		return UpstreamRateSignalSnapshot{}, false
+	}
+	signals := provider.AccountSignals(ctx, time.Now(), time.Duration(cfg.UpstreamRate.StaleTTLSeconds)*time.Second)
+	signal, ok := signals[accountID]
+	if !ok || signal.Stale {
+		return UpstreamRateSignalSnapshot{}, false
+	}
+	return signal, true
 }
 
 func (s *GatewayService) isAccountSchedulableForSelection(account *Account) bool {

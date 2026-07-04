@@ -375,3 +375,35 @@
 - `frontend/src/components/layout/AppSidebar.vue`、`frontend/src/i18n/locales/zh.ts`、`frontend/src/i18n/locales/en.ts`：调度面板菜单入口改为多语言展示。
 - `progress.md`：追加本轮风险修复、验证和回滚说明。
 - 回滚方式：对本轮未提交修复执行 `git restore` 回退上述文件；如已提交，则对修复提交执行 `git revert <commit>`。
+
+## 2026-07-04 - Task: 新增上游倍率源、可用率检测与调度软信号
+### What was done
+- 新增上游倍率源能力，支持配置 Sub2API/NewAPI 源、Bearer Token 脱敏保存、手动测试、手动同步、倍率快照和最近 1 小时可用率展示。
+- 新增上游分组到本地账号/分组的绑定数据结构，支持 first/avg/min/max、offset 和 clamp 规则，为后续精细成本信号提供基础。
+- 将上游倍率接入调度配置，默认关闭；开启后只作为同 priority 层内 Weighted P2C 的软成本信号，不绕过硬过滤、不改账号 priority、不改账号倍率。
+- 在调度面板新增“上游倍率源与可用率”管理区，以及“上游倍率软信号”配置区。
+- 更新调度优化文档，说明上游倍率源、可用率检测、调度接入边界和回滚方式。
+
+### Testing
+- 通过：`GOCACHE="$PWD/.gocache" go test ./internal/service -run "UpstreamRate|SchedulerPolicy"`。
+- 通过：`GOCACHE="$PWD/.gocache" go test ./internal/repository ./internal/handler/admin ./internal/server/routes -run "UpstreamRate|Scheduling"`。
+- 通过：`pnpm exec vitest run src/api/__tests__/upstreamRates.spec.ts src/api/__tests__/settings.gatewayScheduling.spec.ts`。
+- 通过：`pnpm run build`，仅保留 Vite 既有 dynamic import/chunk size 警告和 Browserslist 数据提示。
+- Wire 生成完成：`GOCACHE="$PWD/.gocache" go generate ./cmd/server`。
+- 通过：第一轮审查 `git diff --check`、后端定向测试、前端定向测试均通过，未发现 token 明文响应、请求热路径外部 HTTP 或默认开启调度影响。
+- 通过：第二轮审查 `GOCACHE="$PWD/.gocache" go test ./...`、`pnpm run build`、`git diff --check` 均通过，未发现生成文件缺失、意外全量格式化或敏感信息写入。
+
+### Notes
+- `backend/migrations/159_add_upstream_rate_sources.sql`：新增上游倍率源、快照、绑定和健康检查表。
+- `backend/internal/service/upstream_rate_*.go`：新增上游倍率源管理、采集解析、后台同步 runner 和调度信号提供器。
+- `backend/internal/repository/upstream_rate_repo.go`：新增上游倍率 SQL 仓储、健康聚合和账号信号聚合。
+- `backend/internal/handler/admin/upstream_rate_handler.go`、`backend/internal/server/routes/admin.go`：新增上游倍率管理 API 和调度子路由。
+- `backend/internal/config/config.go`、`backend/internal/service/gateway_scheduling_settings.go`、`backend/internal/handler/dto/settings.go`、`backend/internal/handler/admin/setting_handler.go`：新增上游倍率调度软信号配置。
+- `backend/internal/service/account_scheduler_policy.go`、`backend/internal/service/gateway_service.go`：调度成本接入上游倍率软惩罚，默认关闭且快照缺失/过期时中性。
+- `backend/internal/repository/wire.go`、`backend/internal/service/wire.go`、`backend/internal/handler/wire.go`、`backend/cmd/server/wire_gen.go`：接入新增仓储、服务、runner 和 handler 注入。
+- `frontend/src/api/admin/upstreamRates.ts`、`frontend/src/api/admin/index.ts`、`frontend/src/api/admin/settings.ts`：新增前端 API 与调度配置类型。
+- `frontend/src/views/admin/SchedulingView.vue`、`frontend/src/views/admin/SettingsView.vue`：调度面板新增上游倍率管理和软信号配置，系统设置默认配置补齐新字段。
+- `frontend/src/api/__tests__/upstreamRates.spec.ts`、`frontend/src/api/__tests__/settings.gatewayScheduling.spec.ts`、`backend/internal/service/upstream_rate_*_test.go`、`backend/internal/service/account_scheduler_policy_test.go`：新增/更新回归测试。
+- `docs/SCHEDULER_OPTIMIZATION_NOTES.md`：追加上游倍率源与可用率检测落地说明。
+- `progress.md`：追加本轮实现、验证和回滚说明。
+- 回滚方式：代码层执行 `git revert <feature_commit>`；运行时可在调度面板关闭“上游倍率软信号”；数据侧可执行 `UPDATE upstream_rate_sources SET enabled = false, use_for_scheduling = false;`。

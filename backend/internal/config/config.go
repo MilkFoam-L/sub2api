@@ -1138,6 +1138,15 @@ type GatewaySchedulingSlowStartConfig struct {
 	Penalty  float64       `mapstructure:"penalty"`
 }
 
+// GatewaySchedulingUpstreamRateConfig controls optional upstream-rate soft scheduling signals.
+type GatewaySchedulingUpstreamRateConfig struct {
+	Enabled         bool    `mapstructure:"enabled"`
+	StaleTTLSeconds int     `mapstructure:"stale_ttl_seconds"`
+	RateWeight      float64 `mapstructure:"rate_weight"`
+	HealthWeight    float64 `mapstructure:"health_weight"`
+	MinSuccessRate  float64 `mapstructure:"min_success_rate"`
+}
+
 // GatewaySchedulingConfig accounts scheduling configuration.
 type GatewaySchedulingConfig struct {
 	// PreferredAccountID 管理员指定的优先调度账号；0 表示不指定。
@@ -1177,6 +1186,8 @@ type GatewaySchedulingConfig struct {
 	ActiveProbe GatewaySchedulingActiveProbeConfig `mapstructure:"active_probe"`
 	// SlowStart 恢复账号的慢启动软惩罚配置。
 	SlowStart GatewaySchedulingSlowStartConfig `mapstructure:"slow_start"`
+	// UpstreamRate 上游倍率/可用率软成本信号；默认关闭，不改变现有调度。
+	UpstreamRate GatewaySchedulingUpstreamRateConfig `mapstructure:"upstream_rate"`
 	// StickySessionMode: strict(强粘性)、soft(负载过高可逃逸)、off(关闭 session 粘性)。
 	StickySessionMode string `mapstructure:"sticky_session_mode"`
 	// StickyEscapeScoreRatio soft 粘性下 sticky cost 超过最佳同层 cost 的倍率时逃逸。
@@ -2074,6 +2085,11 @@ func setDefaults() {
 	viper.SetDefault("gateway.scheduling.slow_start.enabled", true)
 	viper.SetDefault("gateway.scheduling.slow_start.duration", 5*time.Minute)
 	viper.SetDefault("gateway.scheduling.slow_start.penalty", 1.0)
+	viper.SetDefault("gateway.scheduling.upstream_rate.enabled", false)
+	viper.SetDefault("gateway.scheduling.upstream_rate.stale_ttl_seconds", 600)
+	viper.SetDefault("gateway.scheduling.upstream_rate.rate_weight", 0.6)
+	viper.SetDefault("gateway.scheduling.upstream_rate.health_weight", 0.4)
+	viper.SetDefault("gateway.scheduling.upstream_rate.min_success_rate", 0.8)
 	viper.SetDefault("gateway.scheduling.sticky_session_mode", GatewayStickySessionModeSoft)
 	viper.SetDefault("gateway.scheduling.sticky_escape_score_ratio", 1.25)
 	viper.SetDefault("gateway.scheduling.sticky_escape_load_rate", 75)

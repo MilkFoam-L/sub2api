@@ -7988,6 +7988,13 @@ function defaultGatewaySchedulingSettings(): GatewaySchedulingSettings {
       duration: "5m",
       penalty: 1,
     },
+    upstream_rate: {
+      enabled: false,
+      stale_ttl_seconds: 600,
+      rate_weight: 0.6,
+      health_weight: 0.4,
+      min_success_rate: 0.8,
+    },
   };
 }
 

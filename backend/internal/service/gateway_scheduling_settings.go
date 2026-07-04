@@ -34,6 +34,11 @@ var gatewaySchedulingSettingKeys = []string{
 	SettingKeyGatewaySchedulingSlowStartEnabled,
 	SettingKeyGatewaySchedulingSlowStartDuration,
 	SettingKeyGatewaySchedulingSlowStartPenalty,
+	SettingKeyGatewaySchedulingUpstreamRateEnabled,
+	SettingKeyGatewaySchedulingUpstreamRateStaleTTLSeconds,
+	SettingKeyGatewaySchedulingUpstreamRateRateWeight,
+	SettingKeyGatewaySchedulingUpstreamRateHealthWeight,
+	SettingKeyGatewaySchedulingUpstreamRateMinSuccessRate,
 }
 
 func (s *SettingService) GetGatewaySchedulingConfig(ctx context.Context) (config.GatewaySchedulingConfig, error) {
@@ -143,6 +148,21 @@ func applyGatewaySchedulingSettings(base config.GatewaySchedulingConfig, setting
 	if cfg.SlowStart.Penalty, err = parseFloatSetting(settings, SettingKeyGatewaySchedulingSlowStartPenalty, cfg.SlowStart.Penalty); err != nil {
 		return cfg, err
 	}
+	if cfg.UpstreamRate.Enabled, err = parseBoolSetting(settings, SettingKeyGatewaySchedulingUpstreamRateEnabled, cfg.UpstreamRate.Enabled); err != nil {
+		return cfg, err
+	}
+	if cfg.UpstreamRate.StaleTTLSeconds, err = parseIntSetting(settings, SettingKeyGatewaySchedulingUpstreamRateStaleTTLSeconds, cfg.UpstreamRate.StaleTTLSeconds); err != nil {
+		return cfg, err
+	}
+	if cfg.UpstreamRate.RateWeight, err = parseFloatSetting(settings, SettingKeyGatewaySchedulingUpstreamRateRateWeight, cfg.UpstreamRate.RateWeight); err != nil {
+		return cfg, err
+	}
+	if cfg.UpstreamRate.HealthWeight, err = parseFloatSetting(settings, SettingKeyGatewaySchedulingUpstreamRateHealthWeight, cfg.UpstreamRate.HealthWeight); err != nil {
+		return cfg, err
+	}
+	if cfg.UpstreamRate.MinSuccessRate, err = parseFloatSetting(settings, SettingKeyGatewaySchedulingUpstreamRateMinSuccessRate, cfg.UpstreamRate.MinSuccessRate); err != nil {
+		return cfg, err
+	}
 	return validateGatewaySchedulingSettingsConfig(cfg)
 }
 
@@ -193,6 +213,15 @@ func validateGatewaySchedulingSettingsConfig(cfg config.GatewaySchedulingConfig)
 	}
 	if cfg.SlowStart.Penalty < 0 {
 		return cfg, fmt.Errorf("gateway.scheduling.slow_start.penalty must be non-negative")
+	}
+	if cfg.UpstreamRate.StaleTTLSeconds <= 0 {
+		return cfg, fmt.Errorf("gateway.scheduling.upstream_rate.stale_ttl_seconds must be positive")
+	}
+	if cfg.UpstreamRate.RateWeight < 0 || cfg.UpstreamRate.HealthWeight < 0 {
+		return cfg, fmt.Errorf("gateway.scheduling.upstream_rate weights must be non-negative")
+	}
+	if cfg.UpstreamRate.MinSuccessRate < 0 || cfg.UpstreamRate.MinSuccessRate > 1 {
+		return cfg, fmt.Errorf("gateway.scheduling.upstream_rate.min_success_rate must be between 0 and 1")
 	}
 	return cfg, nil
 }
@@ -289,5 +318,10 @@ func gatewaySchedulingConfigToMap(cfg config.GatewaySchedulingConfig) map[string
 		SettingKeyGatewaySchedulingSlowStartEnabled:            strconv.FormatBool(cfg.SlowStart.Enabled),
 		SettingKeyGatewaySchedulingSlowStartDuration:           cfg.SlowStart.Duration.String(),
 		SettingKeyGatewaySchedulingSlowStartPenalty:            strconv.FormatFloat(cfg.SlowStart.Penalty, 'f', 8, 64),
+		SettingKeyGatewaySchedulingUpstreamRateEnabled:         strconv.FormatBool(cfg.UpstreamRate.Enabled),
+		SettingKeyGatewaySchedulingUpstreamRateStaleTTLSeconds: strconv.Itoa(cfg.UpstreamRate.StaleTTLSeconds),
+		SettingKeyGatewaySchedulingUpstreamRateRateWeight:      strconv.FormatFloat(cfg.UpstreamRate.RateWeight, 'f', 8, 64),
+		SettingKeyGatewaySchedulingUpstreamRateHealthWeight:    strconv.FormatFloat(cfg.UpstreamRate.HealthWeight, 'f', 8, 64),
+		SettingKeyGatewaySchedulingUpstreamRateMinSuccessRate:  strconv.FormatFloat(cfg.UpstreamRate.MinSuccessRate, 'f', 8, 64),
 	}
 }

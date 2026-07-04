@@ -507,6 +507,11 @@ const (
 	SettingKeyGatewaySchedulingSlowStartEnabled            = "gateway_scheduling_slow_start_enabled"
 	SettingKeyGatewaySchedulingSlowStartDuration           = "gateway_scheduling_slow_start_duration"
 	SettingKeyGatewaySchedulingSlowStartPenalty            = "gateway_scheduling_slow_start_penalty"
+	SettingKeyGatewaySchedulingUpstreamRateEnabled         = "gateway_scheduling_upstream_rate_enabled"
+	SettingKeyGatewaySchedulingUpstreamRateStaleTTLSeconds = "gateway_scheduling_upstream_rate_stale_ttl_seconds"
+	SettingKeyGatewaySchedulingUpstreamRateRateWeight      = "gateway_scheduling_upstream_rate_rate_weight"
+	SettingKeyGatewaySchedulingUpstreamRateHealthWeight    = "gateway_scheduling_upstream_rate_health_weight"
+	SettingKeyGatewaySchedulingUpstreamRateMinSuccessRate  = "gateway_scheduling_upstream_rate_min_success_rate"
 
 	// Web Search Emulation
 	SettingKeyWebSearchEmulationConfig = "web_search_emulation_config" // JSON 配置

@@ -295,6 +295,35 @@ func TestSchedulerPolicySoftStickyEscapesCostlyAccount(t *testing.T) {
 	require.Equal(t, "score", decision.reason)
 }
 
+func TestSchedulerPolicyUpstreamRateSignalIsNeutralWhenDisabled(t *testing.T) {
+	cfg := testWeightedP2CConfig()
+	cfg.UpstreamRate.Enabled = false
+	cfg.UpstreamRate.RateWeight = 1
+	item := makeWeightedPolicyAccount(1, 0, 1, 10, 0, 0)
+	item.upstreamRateSignal = &UpstreamRateSignalSnapshot{EffectiveRateMultiplier: 3, SuccessRate: 0.1}
+
+	costWithSignal := schedulerAccountCost(item, 0, cfg)
+	item.upstreamRateSignal = nil
+	costWithoutSignal := schedulerAccountCost(item, 0, cfg)
+
+	require.Equal(t, costWithoutSignal, costWithSignal)
+}
+
+func TestSchedulerPolicyUpstreamRateSignalAddsSoftPenalty(t *testing.T) {
+	cfg := testWeightedP2CConfig()
+	cfg.UpstreamRate.Enabled = true
+	cfg.UpstreamRate.RateWeight = 1
+	cfg.UpstreamRate.HealthWeight = 1
+	cfg.UpstreamRate.MinSuccessRate = 0.9
+	item := makeWeightedPolicyAccount(1, 0, 1, 10, 0, 0)
+	base := schedulerAccountCost(item, 0, cfg)
+	item.upstreamRateSignal = &UpstreamRateSignalSnapshot{EffectiveRateMultiplier: 1.5, SuccessRate: 0.5}
+
+	withSignal := schedulerAccountCost(item, 0, cfg)
+
+	require.Greater(t, withSignal, base)
+}
+
 func TestConcurrencyServiceSelectionDebtInMemoryFallback(t *testing.T) {
 	svc := NewConcurrencyService(nil)
 	ctx := context.Background()

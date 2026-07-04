@@ -35,9 +35,16 @@ func defaultGatewaySchedulingConfig() config.GatewaySchedulingConfig {
 			RateMultiplier: 0.6,
 			QuotaRisk:      0.3,
 		},
-		LatencyBaselineMS:      15000,
-		QuotaRiskThreshold:     0.2,
-		MaxScorePenalty:        5,
+		LatencyBaselineMS:  15000,
+		QuotaRiskThreshold: 0.2,
+		MaxScorePenalty:    5,
+		UpstreamRate: config.GatewaySchedulingUpstreamRateConfig{
+			Enabled:         false,
+			StaleTTLSeconds: 600,
+			RateWeight:      0.6,
+			HealthWeight:    0.4,
+			MinSuccessRate:  0.8,
+		},
 		StickySessionMode:      config.GatewayStickySessionModeSoft,
 		StickyEscapeScoreRatio: 1.25,
 		StickyEscapeLoadRate:   75,
@@ -84,6 +91,18 @@ func normalizeGatewaySchedulingConfig(cfg config.GatewaySchedulingConfig) config
 	}
 	if cfg.SlowStart.Penalty == 0 {
 		cfg.SlowStart.Penalty = 1
+	}
+	if cfg.UpstreamRate.StaleTTLSeconds <= 0 {
+		cfg.UpstreamRate.StaleTTLSeconds = 600
+	}
+	if cfg.UpstreamRate.RateWeight == 0 {
+		cfg.UpstreamRate.RateWeight = 0.6
+	}
+	if cfg.UpstreamRate.HealthWeight == 0 {
+		cfg.UpstreamRate.HealthWeight = 0.4
+	}
+	if cfg.UpstreamRate.MinSuccessRate == 0 {
+		cfg.UpstreamRate.MinSuccessRate = 0.8
 	}
 	return cfg
 }
@@ -134,6 +153,7 @@ func schedulerAccountCost(item accountWithLoad, selectionDebt int, cfg config.Ga
 	cost += schedulerSoftPenalty(item.runtimeStatsPenalty(weights, cfg))
 	cost += schedulerSoftPenalty(schedulerRateMultiplierPenalty(item.account, weights.RateMultiplier))
 	cost += schedulerSoftPenalty(schedulerQuotaRiskPenalty(item.account, weights.QuotaRisk, cfg.QuotaRiskThreshold))
+	cost += schedulerSoftPenalty(schedulerUpstreamRatePenalty(item.upstreamRateSignal, cfg))
 	if math.IsNaN(cost) || math.IsInf(cost, 0) || cost < 0 {
 		return math.MaxFloat64
 	}
@@ -183,6 +203,21 @@ func schedulerQuotaRiskPenalty(account *Account, weight float64, threshold float
 		return 0
 	}
 	return risk * weight
+}
+
+func schedulerUpstreamRatePenalty(signal *UpstreamRateSignalSnapshot, cfg config.GatewaySchedulingConfig) float64 {
+	cfg = normalizeGatewaySchedulingConfig(cfg)
+	if !cfg.UpstreamRate.Enabled || signal == nil || signal.Stale {
+		return 0
+	}
+	penalty := 0.0
+	if cfg.UpstreamRate.RateWeight > 0 && signal.EffectiveRateMultiplier > 1 {
+		penalty += (signal.EffectiveRateMultiplier - 1) * cfg.UpstreamRate.RateWeight
+	}
+	if cfg.UpstreamRate.HealthWeight > 0 && cfg.UpstreamRate.MinSuccessRate > 0 && signal.SuccessRate < cfg.UpstreamRate.MinSuccessRate {
+		penalty += (cfg.UpstreamRate.MinSuccessRate - signal.SuccessRate) * cfg.UpstreamRate.HealthWeight
+	}
+	return schedulerCapPenalty(penalty, cfg.MaxScorePenalty)
 }
 
 func schedulerQuotaRiskRatio(account *Account, threshold float64) float64 {

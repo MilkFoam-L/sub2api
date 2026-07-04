@@ -115,6 +115,13 @@ func gatewaySchedulingToDTO(cfg config.GatewaySchedulingConfig) dto.GatewaySched
 			Duration: cfg.SlowStart.Duration.String(),
 			Penalty:  cfg.SlowStart.Penalty,
 		},
+		UpstreamRate: dto.GatewaySchedulingUpstreamRateSettings{
+			Enabled:         cfg.UpstreamRate.Enabled,
+			StaleTTLSeconds: cfg.UpstreamRate.StaleTTLSeconds,
+			RateWeight:      cfg.UpstreamRate.RateWeight,
+			HealthWeight:    cfg.UpstreamRate.HealthWeight,
+			MinSuccessRate:  cfg.UpstreamRate.MinSuccessRate,
+		},
 	}
 }
 
@@ -156,6 +163,11 @@ func applyGatewaySchedulingDTO(base config.GatewaySchedulingConfig, payload *dto
 	}
 	cfg.SlowStart.Duration = slowStartDuration
 	cfg.SlowStart.Penalty = payload.SlowStart.Penalty
+	cfg.UpstreamRate.Enabled = payload.UpstreamRate.Enabled
+	cfg.UpstreamRate.StaleTTLSeconds = payload.UpstreamRate.StaleTTLSeconds
+	cfg.UpstreamRate.RateWeight = payload.UpstreamRate.RateWeight
+	cfg.UpstreamRate.HealthWeight = payload.UpstreamRate.HealthWeight
+	cfg.UpstreamRate.MinSuccessRate = payload.UpstreamRate.MinSuccessRate
 	if cfg.PreferredAccountID < 0 {
 		return cfg, fmt.Errorf("gateway_scheduling.preferred_account_id must be non-negative")
 	}
@@ -173,6 +185,9 @@ func applyGatewaySchedulingDTO(base config.GatewaySchedulingConfig, payload *dto
 	}
 	if cfg.ActiveProbe.FailureThreshold <= 0 || cfg.ActiveProbe.PauseDurationMax < cfg.ActiveProbe.PauseDuration || cfg.SlowStart.Penalty < 0 {
 		return cfg, fmt.Errorf("gateway_scheduling probe or slow-start settings are invalid")
+	}
+	if cfg.UpstreamRate.StaleTTLSeconds <= 0 || cfg.UpstreamRate.RateWeight < 0 || cfg.UpstreamRate.HealthWeight < 0 || cfg.UpstreamRate.MinSuccessRate < 0 || cfg.UpstreamRate.MinSuccessRate > 1 {
+		return cfg, fmt.Errorf("gateway_scheduling upstream_rate settings are invalid")
 	}
 	return cfg, nil
 }

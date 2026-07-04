@@ -43,6 +43,13 @@ describe('admin scheduling config payload', () => {
         duration: '5m',
         penalty: 1.2,
       },
+      upstream_rate: {
+        enabled: false,
+        stale_ttl_seconds: 600,
+        rate_weight: 0.6,
+        health_weight: 0.4,
+        min_success_rate: 0.8,
+      },
     } satisfies GatewaySchedulingSettings
 
     put.mockResolvedValueOnce({ data: payload })

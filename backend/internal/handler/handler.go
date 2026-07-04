@@ -23,6 +23,7 @@ type AdminHandlers struct {
 	Promo                  *admin.PromoHandler
 	Setting                *admin.SettingHandler
 	Scheduling             *admin.SchedulingHandler
+	UpstreamRate           *admin.UpstreamRateHandler
 	Ops                    *admin.OpsHandler
 	System                 *admin.SystemHandler
 	Subscription           *admin.SubscriptionHandler

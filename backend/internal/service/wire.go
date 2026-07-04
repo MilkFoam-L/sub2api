@@ -651,6 +651,8 @@ var ProviderSet = wire.NewSet(
 	ProvideChannelMonitorService,
 	ProvideChannelMonitorRunner,
 	NewChannelMonitorRequestTemplateService,
+	NewUpstreamRateService,
+	ProvideUpstreamRateRunner,
 	ProvideUserPlatformQuotaUsageFlusher,
 )
 
