@@ -1140,6 +1140,10 @@ type GatewaySchedulingSlowStartConfig struct {
 
 // GatewaySchedulingConfig accounts scheduling configuration.
 type GatewaySchedulingConfig struct {
+	// PreferredAccountID 管理员指定的优先调度账号；0 表示不指定。
+	// 仅在账号已通过硬过滤且位于当前 priority 候选层内生效。
+	PreferredAccountID int64 `mapstructure:"preferred_account_id"`
+
 	// 粘性会话排队配置
 	StickySessionMaxWaiting  int           `mapstructure:"sticky_session_max_waiting"`
 	StickySessionWaitTimeout time.Duration `mapstructure:"sticky_session_wait_timeout"`

@@ -88,6 +88,7 @@ func (h *SettingHandler) SetNotificationEmailService(notificationEmailService *s
 
 func gatewaySchedulingToDTO(cfg config.GatewaySchedulingConfig) dto.GatewaySchedulingSettings {
 	return dto.GatewaySchedulingSettings{
+		PreferredAccountID: cfg.PreferredAccountID,
 		ScoreWeights: dto.GatewaySchedulingScoreWeights{
 			Load:           cfg.ScoreWeights.Load,
 			Queue:          cfg.ScoreWeights.Queue,
@@ -122,6 +123,7 @@ func applyGatewaySchedulingDTO(base config.GatewaySchedulingConfig, payload *dto
 		return base, nil
 	}
 	cfg := base
+	cfg.PreferredAccountID = payload.PreferredAccountID
 	cfg.ScoreWeights.Load = payload.ScoreWeights.Load
 	cfg.ScoreWeights.Queue = payload.ScoreWeights.Queue
 	cfg.ScoreWeights.Debt = payload.ScoreWeights.Debt
@@ -154,6 +156,9 @@ func applyGatewaySchedulingDTO(base config.GatewaySchedulingConfig, payload *dto
 	}
 	cfg.SlowStart.Duration = slowStartDuration
 	cfg.SlowStart.Penalty = payload.SlowStart.Penalty
+	if cfg.PreferredAccountID < 0 {
+		return cfg, fmt.Errorf("gateway_scheduling.preferred_account_id must be non-negative")
+	}
 	if cfg.ScoreWeights.Load < 0 || cfg.ScoreWeights.Queue < 0 || cfg.ScoreWeights.Debt < 0 || cfg.ScoreWeights.ErrorRate < 0 || cfg.ScoreWeights.Latency < 0 || cfg.ScoreWeights.RateMultiplier < 0 || cfg.ScoreWeights.QuotaRisk < 0 {
 		return cfg, fmt.Errorf("gateway_scheduling.score_weights must be non-negative")
 	}

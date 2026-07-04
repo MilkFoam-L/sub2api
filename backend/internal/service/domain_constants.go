@@ -486,6 +486,7 @@ const (
 	SettingKeyAccountQuotaNotifyEmails  = "account_quota_notify_emails"  // 管理员通知邮箱列表（JSON 数组）
 
 	// Gateway scheduling policy settings
+	SettingKeyGatewaySchedulingPreferredAccountID          = "gateway_scheduling_preferred_account_id"
 	SettingKeyGatewaySchedulingScoreWeightLoad             = "gateway_scheduling_score_weight_load"
 	SettingKeyGatewaySchedulingScoreWeightQueue            = "gateway_scheduling_score_weight_queue"
 	SettingKeyGatewaySchedulingScoreWeightDebt             = "gateway_scheduling_score_weight_debt"

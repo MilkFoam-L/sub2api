@@ -62,6 +62,9 @@ func RegisterAdminRoutes(
 		// 系统设置
 		registerSettingsRoutes(admin, h)
 
+		// 调度面板
+		registerSchedulingRoutes(admin, h)
+
 		// 数据管理
 		registerDataManagementRoutes(admin, h)
 
@@ -454,6 +457,15 @@ func registerPromoCodeRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		promoCodes.PUT("/:id", h.Admin.Promo.Update)
 		promoCodes.DELETE("/:id", h.Admin.Promo.Delete)
 		promoCodes.GET("/:id/usages", h.Admin.Promo.GetUsages)
+	}
+}
+
+func registerSchedulingRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+	scheduling := admin.Group("/scheduling")
+	{
+		scheduling.GET("/config", h.Admin.Scheduling.GetConfig)
+		scheduling.PUT("/config", h.Admin.Scheduling.UpdateConfig)
+		scheduling.GET("/logs", h.Admin.Scheduling.ListLogs)
 	}
 }
 

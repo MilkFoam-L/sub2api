@@ -118,6 +118,36 @@ func TestSchedulerPolicyPreservesPriorityLayering(t *testing.T) {
 	require.Equal(t, int64(2), order[0].account.ID, "priority 仍应先于负载因子容量权重")
 }
 
+func TestSchedulerPolicyPreferredAccountWinsWithinPriorityLayer(t *testing.T) {
+	cfg := testWeightedP2CConfig()
+	cfg.PreferredAccountID = 2
+	cfg.P2CChoiceCount = 1
+	accounts := []accountWithLoad{
+		makeWeightedPolicyAccount(1, 0, 1, 10, 0, 0),
+		makeWeightedPolicyAccount(2, 0, 1, 10, 9, 0),
+		makeWeightedPolicyAccount(3, 0, 1, 10, 0, 0),
+	}
+
+	order := buildWeightedP2CSelectionOrder(accounts, nil, false, cfg)
+
+	require.NotEmpty(t, order)
+	require.Equal(t, int64(2), order[0].account.ID, "优先账号在同 priority 候选层内应临时置顶")
+}
+
+func TestSchedulerPolicyPreferredAccountDoesNotBypassPriorityLayer(t *testing.T) {
+	cfg := testWeightedP2CConfig()
+	cfg.PreferredAccountID = 1
+	accounts := []accountWithLoad{
+		makeWeightedPolicyAccount(1, 5, 1, 1, 0, 0),
+		makeWeightedPolicyAccount(2, 0, 1, 100, 0, 0),
+	}
+
+	order := buildWeightedP2CSelectionOrder(accounts, nil, false, cfg)
+
+	require.NotEmpty(t, order)
+	require.Equal(t, int64(2), order[0].account.ID, "优先账号不能绕过更高优先级层")
+}
+
 func TestSchedulerPolicySoftStickyEscapesOverloadedAccount(t *testing.T) {
 	cfg := testWeightedP2CConfig()
 	sticky := makeWeightedPolicyAccount(1, 0, 1, 10, 8, 0)

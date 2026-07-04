@@ -322,3 +322,30 @@
 ### Notes
 - `progress.md`：追加本轮构建、推送、验证和回滚说明。
 - 回滚方式：部署端可将镜像 tag 回切到上一次已知可用版本；代码层面可回退到提交 `db494d32` 之前的版本，或对本轮日志提交执行 `git revert`。
+
+## 2026-07-04 - Task: 新增管理员调度面板与优先账号调度
+### What was done
+- 新增管理员“调度面板”，将原系统设置中的调度策略迁移到独立页面，并在侧边栏“账号管理”下方新增入口。
+- 新增独立调度配置 API，只更新调度相关 setting，避免系统设置页保存其他配置时误覆盖调度策略。
+- 新增优先账号配置，优先账号只在通过硬过滤、匹配当前请求且位于当前 priority 候选层内生效，不改变账号自身 priority。
+- 新增最近调度内存日志，记录成功选择、粘性命中/重绑、无候选和无可用槽位等关键结果，便于管理员排障观察。
+- 更新调度文档，说明调度顺序、优先账号边界、内存日志边界、接口和回滚方式。
+
+### Testing
+- 通过：`GOCACHE="$PWD/.gocache" go test ./internal/service -run "GatewayScheduling|SchedulingLog|SchedulerPolicyPreferred"`。
+- 通过：`GOCACHE="$PWD/.gocache" go test ./internal/handler/admin ./internal/server/routes`。
+- 通过：`GOCACHE="$PWD/.gocache" go test ./...`。
+- 通过：`pnpm run build`，仅保留 Vite 既有 dynamic import/chunk size 警告和 Browserslist 数据提示。
+- 通过：`pnpm exec vitest run src/api/__tests__/settings.gatewayScheduling.spec.ts`。
+
+### Notes
+- `backend/internal/config/config.go`：为网关调度配置增加优先账号字段。
+- `backend/internal/service/gateway_scheduling_settings.go`、`backend/internal/service/setting_service.go`、`backend/internal/service/domain_constants.go`：增加优先账号 setting、调度配置独立更新方法和默认值。
+- `backend/internal/service/account_scheduler_policy.go`、`backend/internal/service/gateway_service.go`：接入同层优先账号排序和关键调度结果日志。
+- `backend/internal/service/scheduling_log_service.go`、`backend/internal/service/scheduling_log_service_test.go`：新增内存环形调度日志服务和并发/容量测试。
+- `backend/internal/handler/admin/scheduling_handler.go`、`backend/internal/handler/admin/setting_handler.go`、`backend/internal/handler/dto/settings.go`、`backend/internal/handler/handler.go`、`backend/internal/handler/wire.go`、`backend/internal/server/routes/admin.go`、`backend/cmd/server/wire_gen.go`：新增调度面板接口、DTO 字段、路由和注入注册。
+- `frontend/src/views/admin/SchedulingView.vue`、`frontend/src/api/admin/scheduling.ts`、`frontend/src/api/admin/index.ts`、`frontend/src/router/index.ts`、`frontend/src/components/layout/AppSidebar.vue`：新增调度面板页面、API、路由和侧边栏入口。
+- `frontend/src/views/admin/SettingsView.vue`、`frontend/src/api/admin/settings.ts`、`frontend/src/api/__tests__/settings.gatewayScheduling.spec.ts`：移除系统设置页调度卡片，补充优先账号类型并把调度保存测试迁移到独立接口。
+- `docs/SCHEDULER_OPTIMIZATION_NOTES.md`：追加调度面板、优先账号和调度日志说明。
+- `progress.md`：追加本轮实现、验证和回滚说明。
+- 回滚方式：对本轮提交执行 `git revert <commit>`；若只需运行时关闭优先账号，可在调度面板清空优先账号并恢复默认调度参数后保存，或清空 settings 表中的 `gateway_scheduling_*` 设置项回退到配置默认值。

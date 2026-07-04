@@ -54,6 +54,7 @@ type GatewaySchedulingSlowStartSettings struct {
 }
 
 type GatewaySchedulingSettings struct {
+	PreferredAccountID     int64                                `json:"preferred_account_id"`
 	ScoreWeights           GatewaySchedulingScoreWeights        `json:"score_weights"`
 	LatencyBaselineMS      int                                  `json:"latency_baseline_ms"`
 	QuotaRiskThreshold     float64                              `json:"quota_risk_threshold"`

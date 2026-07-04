@@ -2034,6 +2034,20 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 						if s.debugModelRoutingEnabled() {
 							logger.LegacyPrintf("service.gateway", "[ModelRoutingDebug] routed select: group_id=%v model=%s session=%s account=%d", derefGroupID(groupID), requestedModel, shortSessionHash(sessionHash), item.account.ID)
 						}
+						accountID, accountName := schedulingLogAccountFields(item.account)
+						s.recordSchedulingLog(ctx, SchedulingLogEvent{
+							Platform:           platform,
+							Model:              requestedModel,
+							GroupID:            derefGroupID(groupID),
+							CandidateCount:     len(routingCandidates),
+							AvailableCount:     len(routingAvailable),
+							AccountID:          accountID,
+							AccountName:        accountName,
+							PreferredAccountID: cfg.PreferredAccountID,
+							PreferredHit:       schedulingLogPreferredHit(item.account, cfg.PreferredAccountID),
+							StickyStatus:       "rebound",
+							Reason:             "model_routing_selected",
+						})
 						return s.newSelectionResult(ctx, item.account, true, result.ReleaseFunc, nil)
 					}
 				}
@@ -2172,6 +2186,20 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 							if s.cache != nil {
 								_ = s.cache.RefreshSessionTTL(ctx, derefGroupID(groupID), sessionHash, stickySessionTTL)
 							}
+							accountID, accountName := schedulingLogAccountFields(account)
+							s.recordSchedulingLog(ctx, SchedulingLogEvent{
+								Platform:           platform,
+								Model:              requestedModel,
+								GroupID:            derefGroupID(groupID),
+								CandidateCount:     len(accounts),
+								AvailableCount:     1,
+								AccountID:          accountID,
+								AccountName:        accountName,
+								PreferredAccountID: cfg.PreferredAccountID,
+								PreferredHit:       schedulingLogPreferredHit(account, cfg.PreferredAccountID),
+								StickyStatus:       "hit",
+								Reason:             "sticky_hit",
+							})
 							return s.newSelectionResult(ctx, account, true, result.ReleaseFunc, nil)
 						}
 					} else {
@@ -2274,6 +2302,16 @@ stickyLayerDone:
 	}
 
 	if len(candidates) == 0 {
+		s.recordSchedulingLog(ctx, SchedulingLogEvent{
+			Platform:           platform,
+			Model:              requestedModel,
+			GroupID:            derefGroupID(groupID),
+			CandidateCount:     len(accounts),
+			AvailableCount:     0,
+			PreferredAccountID: cfg.PreferredAccountID,
+			StickyStatus:       "miss",
+			Reason:             "no_candidates_after_filter",
+		})
 		return nil, ErrNoAvailableAccounts
 	}
 
@@ -2323,6 +2361,20 @@ stickyLayerDone:
 					if sessionHash != "" && s.cache != nil {
 						_ = s.cache.SetSessionAccountID(ctx, derefGroupID(groupID), sessionHash, selected.account.ID, stickySessionTTL)
 					}
+					accountID, accountName := schedulingLogAccountFields(selected.account)
+					s.recordSchedulingLog(ctx, SchedulingLogEvent{
+						Platform:           platform,
+						Model:              requestedModel,
+						GroupID:            derefGroupID(groupID),
+						CandidateCount:     len(candidates),
+						AvailableCount:     len(available),
+						AccountID:          accountID,
+						AccountName:        accountName,
+						PreferredAccountID: cfg.PreferredAccountID,
+						PreferredHit:       schedulingLogPreferredHit(selected.account, cfg.PreferredAccountID),
+						StickyStatus:       "rebound",
+						Reason:             "selected",
+					})
 					return s.newSelectionResult(ctx, selected.account, true, result.ReleaseFunc, nil)
 				}
 			}
@@ -2356,6 +2408,20 @@ stickyLayerDone:
 		if !s.checkAndRegisterSession(ctx, acc, sessionHash) {
 			continue // 会话限制已满，尝试下一个账号
 		}
+		accountID, accountName := schedulingLogAccountFields(acc)
+		s.recordSchedulingLog(ctx, SchedulingLogEvent{
+			Platform:           platform,
+			Model:              requestedModel,
+			GroupID:            derefGroupID(groupID),
+			CandidateCount:     len(candidates),
+			AvailableCount:     len(fallbackAccounts),
+			AccountID:          accountID,
+			AccountName:        accountName,
+			PreferredAccountID: cfg.PreferredAccountID,
+			PreferredHit:       schedulingLogPreferredHit(acc, cfg.PreferredAccountID),
+			StickyStatus:       "wait_plan",
+			Reason:             "fallback_wait_plan",
+		})
 		return s.newSelectionResult(ctx, acc, false, nil, &AccountWaitPlan{
 			AccountID:      acc.ID,
 			MaxConcurrency: acc.Concurrency,
@@ -2363,6 +2429,16 @@ stickyLayerDone:
 			MaxWaiting:     cfg.FallbackMaxWaiting,
 		})
 	}
+	s.recordSchedulingLog(ctx, SchedulingLogEvent{
+		Platform:           platform,
+		Model:              requestedModel,
+		GroupID:            derefGroupID(groupID),
+		CandidateCount:     len(candidates),
+		AvailableCount:     0,
+		PreferredAccountID: cfg.PreferredAccountID,
+		StickyStatus:       "miss",
+		Reason:             "no_available_slot",
+	})
 	return nil, ErrNoAvailableAccounts
 }
 
@@ -2390,6 +2466,31 @@ func (s *GatewayService) tryAcquireByLegacyOrder(ctx context.Context, candidates
 	}
 
 	return nil, false, nil
+}
+
+func (s *GatewayService) recordSchedulingLog(ctx context.Context, event SchedulingLogEvent) {
+	if event.RequestID == "" {
+		if value, ok := ctx.Value(ctxkey.RequestID).(string); ok {
+			event.RequestID = value
+		}
+	}
+	if event.ClientRequestID == "" {
+		if value, ok := ctx.Value(ctxkey.ClientRequestID).(string); ok {
+			event.ClientRequestID = value
+		}
+	}
+	DefaultSchedulingLogService.Record(event)
+}
+
+func schedulingLogAccountFields(account *Account) (int64, string) {
+	if account == nil {
+		return 0, ""
+	}
+	return account.ID, account.Name
+}
+
+func schedulingLogPreferredHit(account *Account, preferredAccountID int64) bool {
+	return account != nil && preferredAccountID > 0 && account.ID == preferredAccountID
 }
 
 func (s *GatewayService) schedulingConfig(ctx context.Context) config.GatewaySchedulingConfig {

@@ -203,56 +203,6 @@
 
         <!-- Tab: Gateway -->
         <div v-show="activeTab === 'gateway'" class="space-y-6">
-          <!-- Scheduler Policy Settings -->
-          <div class="card">
-            <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
-              <h2 class="text-lg font-semibold text-gray-900 dark:text-white">调度策略</h2>
-              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">配置账号调度的健康、成本、延迟、额度、负载权重，以及主动探活和恢复慢启动。</p>
-            </div>
-            <div class="space-y-6 p-6">
-              <div>
-                <h3 class="mb-3 text-sm font-semibold text-gray-900 dark:text-white">评分权重</h3>
-                <div class="grid grid-cols-1 gap-4 md:grid-cols-4">
-                  <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">负载<input v-model.number="form.gateway_scheduling.score_weights.load" type="number" min="0" step="0.1" class="input mt-1" /></label>
-                  <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">等待队列<input v-model.number="form.gateway_scheduling.score_weights.queue" type="number" min="0" step="0.1" class="input mt-1" /></label>
-                  <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">调度债务<input v-model.number="form.gateway_scheduling.score_weights.debt" type="number" min="0" step="0.1" class="input mt-1" /></label>
-                  <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">错误率<input v-model.number="form.gateway_scheduling.score_weights.error_rate" type="number" min="0" step="0.1" class="input mt-1" /></label>
-                  <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">延迟<input v-model.number="form.gateway_scheduling.score_weights.latency" type="number" min="0" step="0.1" class="input mt-1" /></label>
-                  <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">账号倍率<input v-model.number="form.gateway_scheduling.score_weights.rate_multiplier" type="number" min="0" step="0.1" class="input mt-1" /></label>
-                  <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">额度风险<input v-model.number="form.gateway_scheduling.score_weights.quota_risk" type="number" min="0" step="0.1" class="input mt-1" /></label>
-                  <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">最大单项惩罚<input v-model.number="form.gateway_scheduling.max_score_penalty" type="number" min="0" step="0.1" class="input mt-1" /></label>
-                </div>
-              </div>
-              <div>
-                <h3 class="mb-3 text-sm font-semibold text-gray-900 dark:text-white">阈值与粘性</h3>
-                <div class="grid grid-cols-1 gap-4 md:grid-cols-4">
-                  <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">延迟基准 ms<input v-model.number="form.gateway_scheduling.latency_baseline_ms" type="number" min="1" step="1000" class="input mt-1" /></label>
-                  <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">额度风险阈值<input v-model.number="form.gateway_scheduling.quota_risk_threshold" type="number" min="0" max="1" step="0.01" class="input mt-1" /></label>
-                  <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">粘性模式<select v-model="form.gateway_scheduling.sticky_session_mode" class="input mt-1"><option value="soft">soft</option><option value="strict">strict</option><option value="off">off</option></select></label>
-                  <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">逃逸倍率<input v-model.number="form.gateway_scheduling.sticky_escape_score_ratio" type="number" min="1" step="0.05" class="input mt-1" /></label>
-                  <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">逃逸负载率<input v-model.number="form.gateway_scheduling.sticky_escape_load_rate" type="number" min="0" max="100" step="1" class="input mt-1" /></label>
-                </div>
-              </div>
-              <div class="grid grid-cols-1 gap-6 md:grid-cols-2">
-                <div class="rounded-lg border border-gray-200 p-4 dark:border-dark-700">
-                  <div class="mb-4 flex items-center justify-between"><div><h3 class="text-sm font-semibold text-gray-900 dark:text-white">主动探活暂停</h3><p class="text-xs text-gray-500 dark:text-gray-400">基于已有账号定时测试计划，连续失败后临时退出调度。</p></div><Toggle v-model="form.gateway_scheduling.active_probe.auto_pause_enabled" /></div>
-                  <div class="grid grid-cols-1 gap-4 sm:grid-cols-3">
-                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">失败阈值<input v-model.number="form.gateway_scheduling.active_probe.failure_threshold" type="number" min="1" step="1" class="input mt-1" /></label>
-                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">基础暂停<input v-model="form.gateway_scheduling.active_probe.pause_duration" type="text" class="input mt-1" placeholder="10m" /></label>
-                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">最大暂停<input v-model="form.gateway_scheduling.active_probe.pause_duration_max" type="text" class="input mt-1" placeholder="1h" /></label>
-                  </div>
-                </div>
-                <div class="rounded-lg border border-gray-200 p-4 dark:border-dark-700">
-                  <div class="mb-4 flex items-center justify-between"><div><h3 class="text-sm font-semibold text-gray-900 dark:text-white">恢复慢启动</h3><p class="text-xs text-gray-500 dark:text-gray-400">账号恢复后逐步降低惩罚，避免刚恢复就吃满流量。</p></div><Toggle v-model="form.gateway_scheduling.slow_start.enabled" /></div>
-                  <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">慢启动时长<input v-model="form.gateway_scheduling.slow_start.duration" type="text" class="input mt-1" placeholder="5m" /></label>
-                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">初始惩罚<input v-model.number="form.gateway_scheduling.slow_start.penalty" type="number" min="0" step="0.1" class="input mt-1" /></label>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-
           <!-- Overload Cooldown (529) Settings -->
           <div class="card">
             <div
@@ -8011,6 +7961,7 @@ interface DefaultSubscriptionGroupOption {
 
 function defaultGatewaySchedulingSettings(): GatewaySchedulingSettings {
   return {
+    preferred_account_id: 0,
     score_weights: {
       load: 1,
       queue: 1,

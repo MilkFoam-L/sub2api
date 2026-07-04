@@ -13,6 +13,7 @@ import (
 const gatewaySchedulingSettingsCacheTTL = 60 * time.Second
 
 var gatewaySchedulingSettingKeys = []string{
+	SettingKeyGatewaySchedulingPreferredAccountID,
 	SettingKeyGatewaySchedulingScoreWeightLoad,
 	SettingKeyGatewaySchedulingScoreWeightQueue,
 	SettingKeyGatewaySchedulingScoreWeightDebt,
@@ -60,9 +61,28 @@ func (s *SettingService) GetGatewaySchedulingConfig(ctx context.Context) (config
 	return merged, nil
 }
 
+func (s *SettingService) UpdateGatewaySchedulingConfig(ctx context.Context, cfg config.GatewaySchedulingConfig) error {
+	if s == nil || s.settingRepo == nil {
+		return nil
+	}
+	normalized, err := validateGatewaySchedulingSettingsConfig(normalizeGatewaySchedulingConfig(cfg))
+	if err != nil {
+		return err
+	}
+	updates := gatewaySchedulingConfigToMap(normalized)
+	if err := s.settingRepo.SetMultiple(ctx, updates); err != nil {
+		return err
+	}
+	s.gatewaySchedulingSettingsCache.Store(&cachedGatewaySchedulingSettings{cfg: normalized, expiresAt: time.Now().Add(gatewaySchedulingSettingsCacheTTL).UnixNano()})
+	return nil
+}
+
 func applyGatewaySchedulingSettings(base config.GatewaySchedulingConfig, settings map[string]string) (config.GatewaySchedulingConfig, error) {
 	cfg := normalizeGatewaySchedulingConfig(base)
 	var err error
+	if cfg.PreferredAccountID, err = parseInt64Setting(settings, SettingKeyGatewaySchedulingPreferredAccountID, cfg.PreferredAccountID); err != nil {
+		return cfg, err
+	}
 	if cfg.ScoreWeights.Load, err = parseFloatSetting(settings, SettingKeyGatewaySchedulingScoreWeightLoad, cfg.ScoreWeights.Load); err != nil {
 		return cfg, err
 	}
@@ -127,6 +147,9 @@ func applyGatewaySchedulingSettings(base config.GatewaySchedulingConfig, setting
 }
 
 func validateGatewaySchedulingSettingsConfig(cfg config.GatewaySchedulingConfig) (config.GatewaySchedulingConfig, error) {
+	if cfg.PreferredAccountID < 0 {
+		return cfg, fmt.Errorf("gateway.scheduling.preferred_account_id must be non-negative")
+	}
 	if cfg.ScoreWeights.Load < 0 || cfg.ScoreWeights.Queue < 0 || cfg.ScoreWeights.Debt < 0 || cfg.ScoreWeights.ErrorRate < 0 || cfg.ScoreWeights.Latency < 0 || cfg.ScoreWeights.RateMultiplier < 0 || cfg.ScoreWeights.QuotaRisk < 0 {
 		return cfg, fmt.Errorf("gateway.scheduling.score_weights.* must be non-negative")
 	}
@@ -198,6 +221,18 @@ func parseIntSetting(settings map[string]string, key string, fallback int) (int,
 	return value, nil
 }
 
+func parseInt64Setting(settings map[string]string, key string, fallback int64) (int64, error) {
+	raw := strings.TrimSpace(settings[key])
+	if raw == "" {
+		return fallback, nil
+	}
+	value, err := strconv.ParseInt(raw, 10, 64)
+	if err != nil {
+		return fallback, fmt.Errorf("%s must be an integer", key)
+	}
+	return value, nil
+}
+
 func parseBoolSetting(settings map[string]string, key string, fallback bool) (bool, error) {
 	raw := strings.TrimSpace(settings[key])
 	if raw == "" {
@@ -227,7 +262,13 @@ func gatewaySchedulingSettingsToMap(settings *SystemSettings) map[string]string 
 	if settings != nil {
 		cfg = normalizeGatewaySchedulingConfig(settings.GatewayScheduling)
 	}
+	return gatewaySchedulingConfigToMap(cfg)
+}
+
+func gatewaySchedulingConfigToMap(cfg config.GatewaySchedulingConfig) map[string]string {
+	cfg = normalizeGatewaySchedulingConfig(cfg)
 	return map[string]string{
+		SettingKeyGatewaySchedulingPreferredAccountID:          strconv.FormatInt(cfg.PreferredAccountID, 10),
 		SettingKeyGatewaySchedulingScoreWeightLoad:             strconv.FormatFloat(cfg.ScoreWeights.Load, 'f', 8, 64),
 		SettingKeyGatewaySchedulingScoreWeightQueue:            strconv.FormatFloat(cfg.ScoreWeights.Queue, 'f', 8, 64),
 		SettingKeyGatewaySchedulingScoreWeightDebt:             strconv.FormatFloat(cfg.ScoreWeights.Debt, 'f', 8, 64),

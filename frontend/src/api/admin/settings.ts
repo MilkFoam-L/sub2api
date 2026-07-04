@@ -372,6 +372,7 @@ export interface GatewaySchedulingScoreWeights {
 }
 
 export interface GatewaySchedulingSettings {
+  preferred_account_id: number;
   score_weights: GatewaySchedulingScoreWeights;
   latency_baseline_ms: number;
   quota_risk_threshold: number;

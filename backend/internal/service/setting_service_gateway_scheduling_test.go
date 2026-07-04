@@ -96,10 +96,12 @@ func TestSettingServiceGatewaySchedulingConfigFallsBackToConfig(t *testing.T) {
 	require.Equal(t, 15000, got.LatencyBaselineMS)
 	require.Equal(t, 10*time.Minute, got.ActiveProbe.PauseDuration)
 	require.Equal(t, config.GatewayStickySessionModeSoft, got.StickySessionMode)
+	require.Equal(t, int64(0), got.PreferredAccountID)
 }
 
 func TestSettingServiceGatewaySchedulingConfigUsesDatabaseOverrides(t *testing.T) {
 	repo := &gatewaySchedulingSettingRepoStub{values: map[string]string{
+		SettingKeyGatewaySchedulingPreferredAccountID:          "42",
 		SettingKeyGatewaySchedulingScoreWeightLatency:          "0.9",
 		SettingKeyGatewaySchedulingScoreWeightRateMultiplier:   "1.1",
 		SettingKeyGatewaySchedulingLatencyBaselineMS:           "9000",
@@ -116,6 +118,7 @@ func TestSettingServiceGatewaySchedulingConfigUsesDatabaseOverrides(t *testing.T
 	got, err := svc.GetGatewaySchedulingConfig(context.Background())
 
 	require.NoError(t, err)
+	require.Equal(t, int64(42), got.PreferredAccountID)
 	require.Equal(t, 0.9, got.ScoreWeights.Latency)
 	require.Equal(t, 1.1, got.ScoreWeights.RateMultiplier)
 	require.Equal(t, 9000, got.LatencyBaselineMS)
@@ -145,6 +148,7 @@ func TestSettingServiceUpdateSettingsWritesGatewaySchedulingSettings(t *testing.
 	svc := NewSettingService(repo, baseGatewaySchedulingTestConfig())
 
 	gatewayScheduling := baseGatewaySchedulingTestConfig().Gateway.Scheduling
+	gatewayScheduling.PreferredAccountID = 99
 	gatewayScheduling.ScoreWeights.Load = 1.2
 	gatewayScheduling.ScoreWeights.Queue = 1.3
 	gatewayScheduling.ScoreWeights.Debt = 1.4
@@ -171,9 +175,25 @@ func TestSettingServiceUpdateSettingsWritesGatewaySchedulingSettings(t *testing.
 	})
 
 	require.NoError(t, err)
+	require.Equal(t, "99", repo.sets[SettingKeyGatewaySchedulingPreferredAccountID])
 	require.Equal(t, "0.80000000", repo.sets[SettingKeyGatewaySchedulingScoreWeightLatency])
 	require.Equal(t, "12000", repo.sets[SettingKeyGatewaySchedulingLatencyBaselineMS])
 	require.Equal(t, config.GatewayStickySessionModeOff, repo.sets[SettingKeyGatewaySchedulingStickySessionMode])
 	require.Equal(t, "12m0s", repo.sets[SettingKeyGatewaySchedulingActiveProbePauseDuration])
 	require.Equal(t, "6m0s", repo.sets[SettingKeyGatewaySchedulingSlowStartDuration])
+}
+
+func TestSettingServiceUpdateGatewaySchedulingConfigOnlyWritesSchedulingSettings(t *testing.T) {
+	repo := &gatewaySchedulingSettingRepoStub{values: map[string]string{}}
+	svc := NewSettingService(repo, baseGatewaySchedulingTestConfig())
+	cfg := baseGatewaySchedulingTestConfig().Gateway.Scheduling
+	cfg.PreferredAccountID = 123
+	cfg.ScoreWeights.Latency = 0.75
+
+	err := svc.UpdateGatewaySchedulingConfig(context.Background(), cfg)
+
+	require.NoError(t, err)
+	require.Equal(t, "123", repo.sets[SettingKeyGatewaySchedulingPreferredAccountID])
+	require.Equal(t, "0.75000000", repo.sets[SettingKeyGatewaySchedulingScoreWeightLatency])
+	require.NotContains(t, repo.sets, SettingKeySiteName)
 }

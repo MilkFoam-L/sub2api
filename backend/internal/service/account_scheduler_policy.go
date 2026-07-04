@@ -235,7 +235,7 @@ func buildWeightedP2CSelectionOrder(accounts []accountWithLoad, selectionDebts m
 	}
 	cfg = normalizeGatewaySchedulingConfig(cfg)
 	if cfg.Algorithm == config.GatewaySchedulingAlgorithmLegacyLRU {
-		return buildLegacyLRUSelectionOrder(accounts, preferOAuth)
+		return buildLegacyLRUSelectionOrder(accounts, preferOAuth, cfg.PreferredAccountID)
 	}
 
 	pool := append([]accountWithLoad(nil), accounts...)
@@ -254,18 +254,32 @@ func buildWeightedP2CSelectionOrder(accounts []accountWithLoad, selectionDebts m
 				layerIdxs = append(layerIdxs, idx)
 			}
 		}
-		selectedPoolIdx := selectWeightedP2CIndex(pool, layerIdxs, selectionDebts, preferOAuth, cfg)
+		selectedPoolIdx := selectPreferredAccountIndex(pool, layerIdxs, cfg.PreferredAccountID)
+		if selectedPoolIdx < 0 {
+			selectedPoolIdx = selectWeightedP2CIndex(pool, layerIdxs, selectionDebts, preferOAuth, cfg)
+		}
 		order = append(order, pool[selectedPoolIdx])
 		pool = append(pool[:selectedPoolIdx], pool[selectedPoolIdx+1:]...)
 	}
 	return order
 }
 
-func buildLegacyLRUSelectionOrder(accounts []accountWithLoad, preferOAuth bool) []accountWithLoad {
+func buildLegacyLRUSelectionOrder(accounts []accountWithLoad, preferOAuth bool, preferredAccountID int64) []accountWithLoad {
 	pool := append([]accountWithLoad(nil), accounts...)
 	order := make([]accountWithLoad, 0, len(pool))
 	for len(pool) > 0 {
 		candidates := filterByMinPriority(pool)
+		if preferred := preferredAccountFromLayer(candidates, preferredAccountID); preferred != nil {
+			selectedID := preferred.account.ID
+			for i, item := range pool {
+				if item.account.ID == selectedID {
+					order = append(order, item)
+					pool = append(pool[:i], pool[i+1:]...)
+					break
+				}
+			}
+			continue
+		}
 		candidates = filterByMinLoadRate(candidates)
 		selected := selectByLRU(candidates, preferOAuth)
 		if selected == nil || selected.account == nil {
@@ -281,6 +295,30 @@ func buildLegacyLRUSelectionOrder(accounts []accountWithLoad, preferOAuth bool) 
 		}
 	}
 	return order
+}
+
+func preferredAccountFromLayer(candidates []accountWithLoad, preferredAccountID int64) *accountWithLoad {
+	if preferredAccountID <= 0 {
+		return nil
+	}
+	for i := range candidates {
+		if candidates[i].account != nil && candidates[i].account.ID == preferredAccountID {
+			return &candidates[i]
+		}
+	}
+	return nil
+}
+
+func selectPreferredAccountIndex(pool []accountWithLoad, candidateIdxs []int, preferredAccountID int64) int {
+	if preferredAccountID <= 0 {
+		return -1
+	}
+	for _, idx := range candidateIdxs {
+		if idx >= 0 && idx < len(pool) && pool[idx].account != nil && pool[idx].account.ID == preferredAccountID {
+			return idx
+		}
+	}
+	return -1
 }
 
 func selectWeightedP2CIndex(pool []accountWithLoad, candidateIdxs []int, debts map[int64]int, preferOAuth bool, cfg config.GatewaySchedulingConfig) int {
