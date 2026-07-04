@@ -2325,7 +2325,7 @@ stickyLayerDone:
 
 	loadMap, err := s.concurrencyService.GetAccountsLoadBatch(ctx, accountLoads)
 	if err != nil {
-		if result, ok, legacyErr := s.tryAcquireByLegacyOrder(ctx, candidates, groupID, sessionHash, preferOAuth); legacyErr != nil {
+		if result, ok, legacyErr := s.tryAcquireByLegacyOrder(ctx, candidates, groupID, sessionHash, preferOAuth, cfg, platform, requestedModel); legacyErr != nil {
 			return nil, legacyErr
 		} else if ok {
 			return result, nil
@@ -2442,11 +2442,21 @@ stickyLayerDone:
 	return nil, ErrNoAvailableAccounts
 }
 
-func (s *GatewayService) tryAcquireByLegacyOrder(ctx context.Context, candidates []*Account, groupID *int64, sessionHash string, preferOAuth bool) (*AccountSelectionResult, bool, error) {
-	ordered := append([]*Account(nil), candidates...)
-	sortAccountsByPriorityAndLastUsed(ordered, preferOAuth)
+func (s *GatewayService) tryAcquireByLegacyOrder(ctx context.Context, candidates []*Account, groupID *int64, sessionHash string, preferOAuth bool, cfg config.GatewaySchedulingConfig, platform string, requestedModel string) (*AccountSelectionResult, bool, error) {
+	items := make([]accountWithLoad, 0, len(candidates))
+	for _, acc := range candidates {
+		if acc == nil {
+			continue
+		}
+		items = append(items, accountWithLoad{account: acc, loadInfo: &AccountLoadInfo{AccountID: acc.ID}})
+	}
+	orderedItems := buildLegacyLRUSelectionOrder(items, preferOAuth, cfg.PreferredAccountID)
 
-	for _, acc := range ordered {
+	for _, item := range orderedItems {
+		acc := item.account
+		if acc == nil {
+			continue
+		}
 		result, err := s.tryAcquireAccountSlot(ctx, acc.ID, acc.Concurrency)
 		if err == nil && result.Acquired {
 			// 会话数量限制检查
@@ -2457,6 +2467,20 @@ func (s *GatewayService) tryAcquireByLegacyOrder(ctx context.Context, candidates
 			if sessionHash != "" && s.cache != nil {
 				_ = s.cache.SetSessionAccountID(ctx, derefGroupID(groupID), sessionHash, acc.ID, stickySessionTTL)
 			}
+			accountID, accountName := schedulingLogAccountFields(acc)
+			s.recordSchedulingLog(ctx, SchedulingLogEvent{
+				Platform:           platform,
+				Model:              requestedModel,
+				GroupID:            derefGroupID(groupID),
+				CandidateCount:     len(candidates),
+				AvailableCount:     len(orderedItems),
+				AccountID:          accountID,
+				AccountName:        accountName,
+				PreferredAccountID: cfg.PreferredAccountID,
+				PreferredHit:       schedulingLogPreferredHit(acc, cfg.PreferredAccountID),
+				StickyStatus:       "rebound",
+				Reason:             "legacy_fallback_selected",
+			})
 			selection, err := s.newSelectionResult(ctx, acc, true, result.ReleaseFunc, nil)
 			if err != nil {
 				return nil, false, err

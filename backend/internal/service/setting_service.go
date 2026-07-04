@@ -1885,14 +1885,14 @@ func oidcCompatibilityWriteDefault(base config.OIDCConnectConfig, configured boo
 
 // UpdateSettings 更新系统设置
 func (s *SettingService) UpdateSettings(ctx context.Context, settings *SystemSettings) error {
-	updates, err := s.buildSystemSettingsUpdates(ctx, settings)
+	updates, err := s.buildSystemSettingsUpdates(ctx, settings, true)
 	if err != nil {
 		return err
 	}
 
 	err = s.settingRepo.SetMultiple(ctx, updates)
 	if err == nil {
-		s.refreshCachedSettings(settings)
+		s.refreshCachedSettings(settings, true)
 	}
 	return err
 }
@@ -1920,8 +1920,9 @@ func (s *SettingService) OIDCSecurityWriteDefaults(ctx context.Context) (bool, b
 }
 
 // UpdateSettingsWithAuthSourceDefaults persists system settings and auth-source defaults in a single write.
-func (s *SettingService) UpdateSettingsWithAuthSourceDefaults(ctx context.Context, settings *SystemSettings, authDefaults *AuthSourceDefaultSettings) error {
-	updates, err := s.buildSystemSettingsUpdates(ctx, settings)
+func (s *SettingService) UpdateSettingsWithAuthSourceDefaults(ctx context.Context, settings *SystemSettings, authDefaults *AuthSourceDefaultSettings, includeGatewayScheduling ...bool) error {
+	writeGatewayScheduling := len(includeGatewayScheduling) > 0 && includeGatewayScheduling[0]
+	updates, err := s.buildSystemSettingsUpdates(ctx, settings, writeGatewayScheduling)
 	if err != nil {
 		return err
 	}
@@ -1936,12 +1937,12 @@ func (s *SettingService) UpdateSettingsWithAuthSourceDefaults(ctx context.Contex
 
 	err = s.settingRepo.SetMultiple(ctx, updates)
 	if err == nil {
-		s.refreshCachedSettings(settings)
+		s.refreshCachedSettings(settings, writeGatewayScheduling)
 	}
 	return err
 }
 
-func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, settings *SystemSettings) (map[string]string, error) {
+func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, settings *SystemSettings, includeGatewayScheduling bool) (map[string]string, error) {
 	if err := s.validateDefaultSubscriptionGroups(ctx, settings.DefaultSubscriptions); err != nil {
 		return nil, err
 	}
@@ -2281,8 +2282,10 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	updates[SettingPaymentVisibleMethodAlipayEnabled] = strconv.FormatBool(settings.PaymentVisibleMethodAlipayEnabled)
 	updates[SettingPaymentVisibleMethodWxpayEnabled] = strconv.FormatBool(settings.PaymentVisibleMethodWxpayEnabled)
 	updates[openAIAdvancedSchedulerSettingKey] = strconv.FormatBool(settings.OpenAIAdvancedSchedulerEnabled)
-	for key, value := range gatewaySchedulingSettingsToMap(settings) {
-		updates[key] = value
+	if includeGatewayScheduling {
+		for key, value := range gatewaySchedulingSettingsToMap(settings) {
+			updates[key] = value
+		}
 	}
 
 	// 余额、订阅到期与账号限额通知
@@ -2381,7 +2384,7 @@ func (s *SettingService) buildAuthSourceDefaultUpdates(ctx context.Context, sett
 	return updates, nil
 }
 
-func (s *SettingService) refreshCachedSettings(settings *SystemSettings) {
+func (s *SettingService) refreshCachedSettings(settings *SystemSettings, refreshGatewayScheduling bool) {
 	if settings == nil {
 		return
 	}
@@ -2434,10 +2437,12 @@ func (s *SettingService) refreshCachedSettings(settings *SystemSettings) {
 		enabled:   settings.OpenAIAdvancedSchedulerEnabled,
 		expiresAt: time.Now().Add(openAIAdvancedSchedulerSettingCacheTTL).UnixNano(),
 	})
-	s.gatewaySchedulingSettingsCache.Store(&cachedGatewaySchedulingSettings{
-		cfg:       normalizeGatewaySchedulingConfig(settings.GatewayScheduling),
-		expiresAt: time.Now().Add(gatewaySchedulingSettingsCacheTTL).UnixNano(),
-	})
+	if refreshGatewayScheduling {
+		s.gatewaySchedulingSettingsCache.Store(&cachedGatewaySchedulingSettings{
+			cfg:       normalizeGatewaySchedulingConfig(settings.GatewayScheduling),
+			expiresAt: time.Now().Add(gatewaySchedulingSettingsCacheTTL).UnixNano(),
+		})
+	}
 	// Invalidate the quota auto-pause cache and let the next read trigger a fresh load.
 	// We can't know from here whether ops_advanced_settings was also touched, so be
 	// defensive: store an expired entry — GetOpenAIQuotaAutoPauseSettings will serve

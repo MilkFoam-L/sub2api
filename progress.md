@@ -349,3 +349,29 @@
 - `docs/SCHEDULER_OPTIMIZATION_NOTES.md`：追加调度面板、优先账号和调度日志说明。
 - `progress.md`：追加本轮实现、验证和回滚说明。
 - 回滚方式：对本轮提交执行 `git revert <commit>`；若只需运行时关闭优先账号，可在调度面板清空优先账号并恢复默认调度参数后保存，或清空 settings 表中的 `gateway_scheduling_*` 设置项回退到配置默认值。
+
+## 2026-07-04 - Task: 修复调度面板审查风险并二次验证
+### What was done
+- 修复系统设置页保存其他配置时仍可能回写调度 setting 的风险；默认系统设置保存不再写入或刷新 `gateway_scheduling_*`，只有请求显式携带调度配置时才兼容写入。
+- 修复负载批量读取失败进入 legacy fallback 时未应用优先账号、未记录调度日志的问题，并补齐无负载信息时的默认 loadInfo，避免 fallback 排序空指针。
+- 修复管理员侧边栏调度面板入口硬编码中文的问题，改为中英文多语言 key。
+- 针对上述两个后端风险补充回归测试，并完成二次代码审查，未发现残留上线阻断风险。
+
+### Testing
+- 通过：`GOCACHE="$PWD/.gocache" go test ./internal/service -run "UpdateSettingsWithAuthSourceDefaultsSkipsGatewaySchedulingSettings|GatewayLegacyFallbackUsesPreferredAccountAndRecordsLog"`。
+- 通过：`GOCACHE="$PWD/.gocache" go test ./internal/service -run "GatewayScheduling|SchedulingLog|SchedulerPolicyPreferred|GatewayLegacyFallback"`。
+- 通过：`GOCACHE="$PWD/.gocache" go test ./internal/handler/admin ./internal/server/routes`。
+- 通过：`GOCACHE="$PWD/.gocache" go test ./...`。
+- 通过：`pnpm run build`，仅保留 Vite 既有 dynamic import/chunk size 警告、chunk size 警告和 Browserslist 数据提示。
+- 通过：`pnpm exec vitest run src/api/__tests__/settings.gatewayScheduling.spec.ts src/i18n/__tests__/riskControlLocales.spec.ts`。
+- 通过：`git diff --check`，未发现空白错误或冲突标记。
+
+### Notes
+- `backend/internal/service/setting_service.go`：为系统设置更新增加调度写入开关，默认跳过调度 setting 和调度缓存刷新，避免覆盖调度面板配置。
+- `backend/internal/handler/admin/setting_handler.go`：仅当请求显式携带 `gateway_scheduling` 时才让系统设置接口兼容写入调度配置。
+- `backend/internal/service/gateway_service.go`：legacy fallback 排序接入优先账号，并在成功选择时写入调度日志。
+- `backend/internal/service/setting_service_gateway_scheduling_test.go`：新增系统设置保存不写调度 setting 的回归测试。
+- `backend/internal/service/gateway_legacy_fallback_scheduling_test.go`：新增 legacy fallback 使用优先账号并记录日志的回归测试。
+- `frontend/src/components/layout/AppSidebar.vue`、`frontend/src/i18n/locales/zh.ts`、`frontend/src/i18n/locales/en.ts`：调度面板菜单入口改为多语言展示。
+- `progress.md`：追加本轮风险修复、验证和回滚说明。
+- 回滚方式：对本轮未提交修复执行 `git restore` 回退上述文件；如已提交，则对修复提交执行 `git revert <commit>`。

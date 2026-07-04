@@ -183,6 +183,22 @@ func TestSettingServiceUpdateSettingsWritesGatewaySchedulingSettings(t *testing.
 	require.Equal(t, "6m0s", repo.sets[SettingKeyGatewaySchedulingSlowStartDuration])
 }
 
+func TestSettingServiceUpdateSettingsWithAuthSourceDefaultsSkipsGatewaySchedulingSettings(t *testing.T) {
+	repo := &gatewaySchedulingSettingRepoStub{values: map[string]string{}}
+	svc := NewSettingService(repo, baseGatewaySchedulingTestConfig())
+	gatewayScheduling := baseGatewaySchedulingTestConfig().Gateway.Scheduling
+	gatewayScheduling.PreferredAccountID = 456
+	gatewayScheduling.ScoreWeights.Latency = 0.55
+
+	err := svc.UpdateSettingsWithAuthSourceDefaults(context.Background(), &SystemSettings{
+		GatewayScheduling: gatewayScheduling,
+	}, &AuthSourceDefaultSettings{})
+
+	require.NoError(t, err)
+	require.NotContains(t, repo.sets, SettingKeyGatewaySchedulingPreferredAccountID)
+	require.NotContains(t, repo.sets, SettingKeyGatewaySchedulingScoreWeightLatency)
+}
+
 func TestSettingServiceUpdateGatewaySchedulingConfigOnlyWritesSchedulingSettings(t *testing.T) {
 	repo := &gatewaySchedulingSettingRepoStub{values: map[string]string{}}
 	svc := NewSettingService(repo, baseGatewaySchedulingTestConfig())
