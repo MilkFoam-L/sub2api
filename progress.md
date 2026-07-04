@@ -306,3 +306,19 @@
 - `deploy/`：合并 Docker Compose 与环境变量示例新增配置。
 - `progress.md`：追加本轮合并、版本同步、验证和回滚说明。
 - 回滚方式：对本轮合并提交执行 `git revert -m 1 <merge_commit>`；若只需回退版本号，将 `backend/cmd/server/VERSION` 改回 `0.1.143`。
+
+## 2026-07-04 - Task: 构建并推送 v0.1.144 腾讯云镜像
+### What was done
+- 基于当前提交 `db494d32` 构建 Docker release 镜像，运行时版本为 `0.1.144`。
+- 推送腾讯云 CCR 镜像版本 tag：`ccr.ccs.tencentyun.com/apophis-chat/sub2api:0.1.144-db494d32-20260704122658`。
+- 同步更新并推送 `ccr.ccs.tencentyun.com/apophis-chat/sub2api:latest`。
+
+### Testing
+- Docker 构建通过：前端 `pnpm run build`、后端 Go release build、最终镜像构建均成功。
+- 腾讯云 CCR 推送完成：版本 tag 与 `latest` 均推送成功。
+- 远端 manifest digest 已返回一致：`sha256:ea489b0f1561570c904103c074ef5562f5db34fedd293cc21b9678127fe13e8c`。
+- 首次构建因整体超时中断，重试时曾遇到 `goproxy.cn` 依赖下载 `unexpected EOF`，再次重试后构建成功。
+
+### Notes
+- `progress.md`：追加本轮构建、推送、验证和回滚说明。
+- 回滚方式：部署端可将镜像 tag 回切到上一次已知可用版本；代码层面可回退到提交 `db494d32` 之前的版本，或对本轮日志提交执行 `git revert`。
