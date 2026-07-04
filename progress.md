@@ -286,3 +286,23 @@
 ### Notes
 - `progress.md`：追加本轮构建、推送、验证和回滚说明。
 - 回滚方式：部署端可将镜像 tag 回切到上一次已知可用版本；代码层面可回退到提交 `0688f39a` 之前的版本，或对本轮日志提交执行 `git revert`。
+
+## 2026-07-04 - Task: 合并上游 v0.1.144 并同步版本
+### What was done
+- 将上游 `Wei-Shaw/sub2api` 的 `v0.1.144` release tag 合并到当前 `main` 分支。
+- 解决 Ops 并发统计账号列表过滤参数的合并冲突，同时保留本分支既有筛选参数和上游新增分组过滤。
+- 同步运行时版本号为 `0.1.144`。
+- 吸收上游并发统计、账号用量、Fable 计费、OpenAI/Anthropic 限流窗口、Codex 导入、错误分类展示、IP 地理批量工具和部署配置更新。
+
+### Testing
+- 通过：`GOCACHE="C:/Users/MilkFoam/Desktop/AI/sub2api/.gocache" go test ./internal/config ./internal/handler ./internal/server ./internal/repository ./internal/service ./internal/setup ./cmd/server`。
+- 通过：`pnpm run build`，仅保留 Vite 既有 dynamic import/chunk size 警告和 Browserslist 数据提示。
+- 通过：`git diff --check`，未发现空白错误或未清理的冲突标记。
+
+### Notes
+- `backend/cmd/server/VERSION`：同步运行时版本号为 `0.1.144`。
+- `backend/`：合并 v0.1.144 后端配置、仓储、并发统计、账号用量、限流窗口、Codex 导入、用量记录和测试更新。
+- `frontend/`：合并 v0.1.144 前端账号用量、用量筛选、错误分类展示、IP 地理批量工具和多语言更新。
+- `deploy/`：合并 Docker Compose 与环境变量示例新增配置。
+- `progress.md`：追加本轮合并、版本同步、验证和回滚说明。
+- 回滚方式：对本轮合并提交执行 `git revert -m 1 <merge_commit>`；若只需回退版本号，将 `backend/cmd/server/VERSION` 改回 `0.1.143`。
