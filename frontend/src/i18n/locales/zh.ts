@@ -1581,6 +1581,11 @@ export default {
       failedToLoad: '加载仪表盘数据失败'
     },
 
+    scheduling: {
+      title: '调度面板',
+      description: '集中管理账号调度策略、优先账号和最近调度日志。'
+    },
+
     backup: {
       title: '数据库备份',
       description: '全量数据库备份到 S3 兼容存储，支持定时备份与恢复',

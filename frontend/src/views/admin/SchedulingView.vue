@@ -1,19 +1,11 @@
 <template>
   <AppLayout>
     <div class="space-y-6">
-    <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-      <div>
-        <h1 class="text-2xl font-semibold text-gray-900 dark:text-white">调度面板</h1>
-        <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-          集中管理账号调度策略、优先账号和最近调度日志。
-        </p>
-      </div>
-      <div class="flex gap-2">
-        <button type="button" class="btn btn-secondary btn-sm" @click="loadAll" :disabled="loading">刷新</button>
-        <button type="button" class="btn btn-primary btn-sm" @click="saveConfig" :disabled="saving || loading">
-          {{ saving ? '保存中...' : '保存调度配置' }}
-        </button>
-      </div>
+    <div class="flex justify-end gap-2">
+      <button type="button" class="btn btn-secondary btn-sm" @click="loadAll" :disabled="loading">刷新</button>
+      <button type="button" class="btn btn-primary btn-sm" @click="saveConfig" :disabled="saving || loading">
+        {{ saving ? '保存中...' : '保存调度配置' }}
+      </button>
     </div>
 
     <div v-if="error" class="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700 dark:border-red-800 dark:bg-red-900/20 dark:text-red-300">
@@ -57,9 +49,11 @@
 
     <section class="card p-6">
       <h2 class="text-lg font-semibold text-gray-900 dark:text-white">调度策略配置</h2>
+      <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">影响账号进入候选后的排序和流量分配，不会绕过禁用、限流、额度和模型能力等硬过滤。</p>
       <div class="mt-6 space-y-6">
         <div>
-          <h3 class="mb-3 text-sm font-semibold text-gray-900 dark:text-white">评分权重</h3>
+          <h3 class="text-sm font-semibold text-gray-900 dark:text-white">评分权重</h3>
+          <p class="mb-3 mt-1 text-xs text-gray-500 dark:text-gray-400">影响 Weighted P2C 成本评分：权重越高，该指标越容易让账号在同 priority 层内后移。</p>
           <div class="grid grid-cols-1 gap-4 md:grid-cols-4">
             <label class="field">负载<input v-model.number="config.score_weights.load" type="number" min="0" step="0.1" class="input mt-1" /></label>
             <label class="field">等待队列<input v-model.number="config.score_weights.queue" type="number" min="0" step="0.1" class="input mt-1" /></label>
@@ -73,7 +67,8 @@
         </div>
 
         <div>
-          <h3 class="mb-3 text-sm font-semibold text-gray-900 dark:text-white">阈值与粘性</h3>
+          <h3 class="text-sm font-semibold text-gray-900 dark:text-white">阈值与粘性</h3>
+          <p class="mb-3 mt-1 text-xs text-gray-500 dark:text-gray-400">影响延迟/额度风险换算，以及已有会话是否继续复用原账号或逃逸到更健康账号。</p>
           <div class="grid grid-cols-1 gap-4 md:grid-cols-4">
             <label class="field">延迟基准 ms<input v-model.number="config.latency_baseline_ms" type="number" min="1" step="1000" class="input mt-1" /></label>
             <label class="field">额度风险阈值<input v-model.number="config.quota_risk_threshold" type="number" min="0" max="1" step="0.01" class="input mt-1" /></label>
@@ -88,7 +83,7 @@
             <div class="mb-4 flex items-center justify-between gap-4">
               <div>
                 <h3 class="text-sm font-semibold text-gray-900 dark:text-white">主动探活暂停</h3>
-                <p class="text-xs text-gray-500 dark:text-gray-400">连续失败后临时退出调度。</p>
+                <p class="text-xs text-gray-500 dark:text-gray-400">影响账号可调度状态：连续失败后临时退出调度，恢复前不会进入候选。</p>
               </div>
               <Toggle v-model="config.active_probe.auto_pause_enabled" />
             </div>
@@ -103,7 +98,7 @@
             <div class="mb-4 flex items-center justify-between gap-4">
               <div>
                 <h3 class="text-sm font-semibold text-gray-900 dark:text-white">恢复慢启动</h3>
-                <p class="text-xs text-gray-500 dark:text-gray-400">账号恢复后降低初期流量冲击。</p>
+                <p class="text-xs text-gray-500 dark:text-gray-400">影响恢复期流量分配：账号刚恢复时增加临时成本，逐步恢复正常流量。</p>
               </div>
               <Toggle v-model="config.slow_start.enabled" />
             </div>

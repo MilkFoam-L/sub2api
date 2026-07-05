@@ -1560,6 +1560,11 @@ export default {
       failedToLoad: 'Failed to load dashboard statistics'
     },
 
+    scheduling: {
+      title: 'Scheduling Panel',
+      description: 'Manage account scheduling policies, preferred accounts, and recent scheduling logs.'
+    },
+
     backup: {
       title: 'Database Backup',
       description: 'Full database backup to S3-compatible storage with scheduled backup and restore',

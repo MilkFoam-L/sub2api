@@ -511,7 +511,7 @@ const routes: RouteRecordRaw[] = [
     meta: {
       requiresAuth: true,
       requiresAdmin: true,
-      title: 'Scheduling Panel',
+      titleKey: 'admin.scheduling.title',
       descriptionKey: 'admin.scheduling.description'
     }
   },

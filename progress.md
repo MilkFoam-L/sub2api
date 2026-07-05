@@ -428,3 +428,19 @@
 - `backend/internal/handler/dto/settings.go`、`backend/internal/handler/admin/setting_handler.go`：调度配置 DTO 支持按分组优先账号。
 - `docs/SCHEDULER_OPTIMIZATION_NOTES.md`、`progress.md`：同步说明本轮界面和调度策略调整。
 - 回滚方式：对本轮未提交改动执行 `git restore` 回退上述文件；如后续提交，则对该提交执行 `git revert <commit>`。
+
+## 2026-07-05 - Task: 调度面板标题与配置说明修正
+### What was done
+- 删除调度面板页面内部重复标题和描述，将页面标题与说明统一交给后台顶部标题栏展示。
+- 为调度路由补充国际化标题键，修复顶部栏显示英文 fallback 和 `admin.scheduling.description` 原始 key 的问题。
+- 在调度策略配置中补充“影响范围”说明，明确评分权重、阈值与粘性、主动探活暂停、恢复慢启动分别影响哪些调度行为。
+
+### Testing
+- 通过：`pnpm run build`，仅保留 Vite 既有 dynamic import/chunk size 警告和 Browserslist 数据提示。
+
+### Notes
+- `frontend/src/router/index.ts`：调度路由改为使用 `admin.scheduling.title` 标题键。
+- `frontend/src/i18n/locales/zh.ts`、`frontend/src/i18n/locales/en.ts`：新增调度面板顶部栏标题和描述文案。
+- `frontend/src/views/admin/SchedulingView.vue`：移除页内重复标题区，补充各配置小标题的影响说明。
+- `progress.md`：追加本轮修正、验证和回滚说明。
+- 回滚方式：对本轮未提交改动执行 `git restore frontend/src/router/index.ts frontend/src/i18n/locales/zh.ts frontend/src/i18n/locales/en.ts frontend/src/views/admin/SchedulingView.vue progress.md`；如后续提交，则执行 `git revert <commit>`。
