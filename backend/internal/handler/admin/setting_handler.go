@@ -88,7 +88,8 @@ func (h *SettingHandler) SetNotificationEmailService(notificationEmailService *s
 
 func gatewaySchedulingToDTO(cfg config.GatewaySchedulingConfig) dto.GatewaySchedulingSettings {
 	return dto.GatewaySchedulingSettings{
-		PreferredAccountID: cfg.PreferredAccountID,
+		PreferredAccountID:        cfg.PreferredAccountID,
+		PreferredAccountByGroupID: cfg.PreferredAccountByGroupID,
 		ScoreWeights: dto.GatewaySchedulingScoreWeights{
 			Load:           cfg.ScoreWeights.Load,
 			Queue:          cfg.ScoreWeights.Queue,
@@ -131,6 +132,10 @@ func applyGatewaySchedulingDTO(base config.GatewaySchedulingConfig, payload *dto
 	}
 	cfg := base
 	cfg.PreferredAccountID = payload.PreferredAccountID
+	cfg.PreferredAccountByGroupID = payload.PreferredAccountByGroupID
+	if cfg.PreferredAccountByGroupID == nil {
+		cfg.PreferredAccountByGroupID = map[int64]int64{}
+	}
 	cfg.ScoreWeights.Load = payload.ScoreWeights.Load
 	cfg.ScoreWeights.Queue = payload.ScoreWeights.Queue
 	cfg.ScoreWeights.Debt = payload.ScoreWeights.Debt
@@ -170,6 +175,11 @@ func applyGatewaySchedulingDTO(base config.GatewaySchedulingConfig, payload *dto
 	cfg.UpstreamRate.MinSuccessRate = payload.UpstreamRate.MinSuccessRate
 	if cfg.PreferredAccountID < 0 {
 		return cfg, fmt.Errorf("gateway_scheduling.preferred_account_id must be non-negative")
+	}
+	for groupID, accountID := range cfg.PreferredAccountByGroupID {
+		if groupID < 0 || accountID < 0 {
+			return cfg, fmt.Errorf("gateway_scheduling.preferred_account_by_group_id must contain non-negative ids")
+		}
 	}
 	if cfg.ScoreWeights.Load < 0 || cfg.ScoreWeights.Queue < 0 || cfg.ScoreWeights.Debt < 0 || cfg.ScoreWeights.ErrorRate < 0 || cfg.ScoreWeights.Latency < 0 || cfg.ScoreWeights.RateMultiplier < 0 || cfg.ScoreWeights.QuotaRisk < 0 {
 		return cfg, fmt.Errorf("gateway_scheduling.score_weights must be non-negative")

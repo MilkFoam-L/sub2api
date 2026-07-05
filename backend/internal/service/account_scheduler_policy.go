@@ -35,9 +35,10 @@ func defaultGatewaySchedulingConfig() config.GatewaySchedulingConfig {
 			RateMultiplier: 0.6,
 			QuotaRisk:      0.3,
 		},
-		LatencyBaselineMS:  15000,
-		QuotaRiskThreshold: 0.2,
-		MaxScorePenalty:    5,
+		PreferredAccountByGroupID: map[int64]int64{},
+		LatencyBaselineMS:         15000,
+		QuotaRiskThreshold:        0.2,
+		MaxScorePenalty:           5,
 		UpstreamRate: config.GatewaySchedulingUpstreamRateConfig{
 			Enabled:         false,
 			StaleTTLSeconds: 600,
@@ -57,6 +58,9 @@ func normalizeGatewaySchedulingConfig(cfg config.GatewaySchedulingConfig) config
 	cfg.StickySessionMode = strings.ToLower(strings.TrimSpace(cfg.StickySessionMode))
 	if cfg.Algorithm == "" {
 		cfg.Algorithm = config.GatewaySchedulingAlgorithmWeightedP2C
+	}
+	if cfg.PreferredAccountByGroupID == nil {
+		cfg.PreferredAccountByGroupID = map[int64]int64{}
 	}
 	if cfg.P2CChoiceCount <= 0 {
 		cfg.P2CChoiceCount = 2
@@ -262,6 +266,16 @@ func schedulerCapPenalty(penalty float64, maxPenalty float64) float64 {
 		return maxPenalty
 	}
 	return penalty
+}
+
+func schedulingConfigForGroup(cfg config.GatewaySchedulingConfig, groupID int64) config.GatewaySchedulingConfig {
+	cfg = normalizeGatewaySchedulingConfig(cfg)
+	if accountID, ok := cfg.PreferredAccountByGroupID[groupID]; ok {
+		cfg.PreferredAccountID = accountID
+	} else if len(cfg.PreferredAccountByGroupID) > 0 {
+		cfg.PreferredAccountID = 0
+	}
+	return cfg
 }
 
 func buildWeightedP2CSelectionOrder(accounts []accountWithLoad, selectionDebts map[int64]int, preferOAuth bool, cfg config.GatewaySchedulingConfig) []accountWithLoad {

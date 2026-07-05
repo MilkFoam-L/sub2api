@@ -134,6 +134,24 @@ func TestSchedulerPolicyPreferredAccountWinsWithinPriorityLayer(t *testing.T) {
 	require.Equal(t, int64(2), order[0].account.ID, "优先账号在同 priority 候选层内应临时置顶")
 }
 
+func TestSchedulerPolicyPreferredAccountByGroupOnlyAppliesCurrentGroup(t *testing.T) {
+	cfg := testWeightedP2CConfig()
+	cfg.PreferredAccountByGroupID = map[int64]int64{1: 2, 2: 3}
+	accounts := []accountWithLoad{
+		makeWeightedPolicyAccount(1, 0, 1, 10, 0, 0),
+		makeWeightedPolicyAccount(2, 0, 1, 10, 9, 0),
+		makeWeightedPolicyAccount(3, 0, 1, 10, 8, 0),
+	}
+
+	groupOneOrder := buildWeightedP2CSelectionOrder(accounts, nil, false, schedulingConfigForGroup(cfg, 1))
+	groupTwoOrder := buildWeightedP2CSelectionOrder(accounts, nil, false, schedulingConfigForGroup(cfg, 2))
+	missingGroupOrder := buildWeightedP2CSelectionOrder(accounts, nil, false, schedulingConfigForGroup(cfg, 3))
+
+	require.Equal(t, int64(2), groupOneOrder[0].account.ID)
+	require.Equal(t, int64(3), groupTwoOrder[0].account.ID)
+	require.NotEqual(t, int64(2), missingGroupOrder[0].account.ID, "未配置分组不应继承其他分组优先账号")
+}
+
 func TestSchedulerPolicyPreferredAccountDoesNotBypassPriorityLayer(t *testing.T) {
 	cfg := testWeightedP2CConfig()
 	cfg.PreferredAccountID = 1

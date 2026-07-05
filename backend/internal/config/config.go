@@ -1149,9 +1149,11 @@ type GatewaySchedulingUpstreamRateConfig struct {
 
 // GatewaySchedulingConfig accounts scheduling configuration.
 type GatewaySchedulingConfig struct {
-	// PreferredAccountID 管理员指定的优先调度账号；0 表示不指定。
+	// PreferredAccountID 保留兼容旧配置；新调度面板使用 PreferredAccountByGroupID 按分组指定。
 	// 仅在账号已通过硬过滤且位于当前 priority 候选层内生效。
 	PreferredAccountID int64 `mapstructure:"preferred_account_id"`
+	// PreferredAccountByGroupID 按分组指定优先调度账号；key=group_id，0 表示未分组/默认。
+	PreferredAccountByGroupID map[int64]int64 `mapstructure:"preferred_account_by_group_id"`
 
 	// 粘性会话排队配置
 	StickySessionMaxWaiting  int           `mapstructure:"sticky_session_max_waiting"`

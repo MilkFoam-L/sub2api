@@ -407,3 +407,24 @@
 - `docs/SCHEDULER_OPTIMIZATION_NOTES.md`：追加上游倍率源与可用率检测落地说明。
 - `progress.md`：追加本轮实现、验证和回滚说明。
 - 回滚方式：代码层执行 `git revert <feature_commit>`；运行时可在调度面板关闭“上游倍率软信号”；数据侧可执行 `UPDATE upstream_rate_sources SET enabled = false, use_for_scheduling = false;`。
+
+## 2026-07-04 - Task: 修正调度面板布局和按分组优先账号
+### What was done
+- 修复调度面板未包裹后台通用布局的问题，恢复与其他后台页面一致的侧边栏和顶部栏展示。
+- 将“优先调度账号”从全局单选改为按分组分别配置，未配置的分组继续使用常规调度，不再把一个优先账号应用到全部分组。
+- 删除调度面板中的“上游倍率源与可用率”管理块，以及上游倍率软信号配置入口，避免暴露暂时无实际价值的界面。
+- 保留后端上游倍率能力与接口，不在本轮做破坏性删除，避免影响已提交迁移和服务注入。
+
+### Testing
+- 通过：`GOCACHE="$PWD/.gocache" go test ./internal/service ./internal/handler/admin -run "GatewayScheduling|SchedulerPolicyPreferred|GatewayLegacyFallback"`。
+- 通过：`pnpm exec vitest run src/api/__tests__/settings.gatewayScheduling.spec.ts`。
+- 通过：`pnpm run build`，仅保留 Vite 既有 dynamic import/chunk size 警告和 Browserslist 数据提示。
+
+### Notes
+- `frontend/src/views/admin/SchedulingView.vue`：新增 `AppLayout` 包裹，移除上游可用率界面，按分组展示优先账号选择。
+- `frontend/src/views/admin/SettingsView.vue`、`frontend/src/api/admin/settings.ts`、`frontend/src/api/__tests__/settings.gatewayScheduling.spec.ts`：补充分组优先账号配置字段和默认值。
+- `backend/internal/config/config.go`、`backend/internal/service/gateway_scheduling_settings.go`、`backend/internal/service/domain_constants.go`、`backend/internal/service/setting_service.go`：新增 `preferred_account_by_group_id` setting 读写与校验。
+- `backend/internal/service/account_scheduler_policy.go`、`backend/internal/service/gateway_service.go`、`backend/internal/service/account_scheduler_policy_test.go`、`backend/internal/service/setting_service_gateway_scheduling_test.go`：调度按当前 group_id 应用优先账号，并补充回归测试。
+- `backend/internal/handler/dto/settings.go`、`backend/internal/handler/admin/setting_handler.go`：调度配置 DTO 支持按分组优先账号。
+- `docs/SCHEDULER_OPTIMIZATION_NOTES.md`、`progress.md`：同步说明本轮界面和调度策略调整。
+- 回滚方式：对本轮未提交改动执行 `git restore` 回退上述文件；如后续提交，则对该提交执行 `git revert <commit>`。

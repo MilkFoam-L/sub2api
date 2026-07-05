@@ -16,7 +16,8 @@ vi.mock('@/api/client', () => ({
 describe('admin scheduling config payload', () => {
   it('saves gateway scheduling through the dedicated scheduling endpoint', async () => {
     const payload = {
-      preferred_account_id: 42,
+      preferred_account_id: 0,
+      preferred_account_by_group_id: { '1': 42 },
       score_weights: {
         load: 1,
         queue: 0.8,

@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strconv"
 	"strings"
@@ -14,6 +15,7 @@ const gatewaySchedulingSettingsCacheTTL = 60 * time.Second
 
 var gatewaySchedulingSettingKeys = []string{
 	SettingKeyGatewaySchedulingPreferredAccountID,
+	SettingKeyGatewaySchedulingPreferredAccountByGroupID,
 	SettingKeyGatewaySchedulingScoreWeightLoad,
 	SettingKeyGatewaySchedulingScoreWeightQueue,
 	SettingKeyGatewaySchedulingScoreWeightDebt,
@@ -86,6 +88,9 @@ func applyGatewaySchedulingSettings(base config.GatewaySchedulingConfig, setting
 	cfg := normalizeGatewaySchedulingConfig(base)
 	var err error
 	if cfg.PreferredAccountID, err = parseInt64Setting(settings, SettingKeyGatewaySchedulingPreferredAccountID, cfg.PreferredAccountID); err != nil {
+		return cfg, err
+	}
+	if cfg.PreferredAccountByGroupID, err = parseInt64MapSetting(settings, SettingKeyGatewaySchedulingPreferredAccountByGroupID, cfg.PreferredAccountByGroupID); err != nil {
 		return cfg, err
 	}
 	if cfg.ScoreWeights.Load, err = parseFloatSetting(settings, SettingKeyGatewaySchedulingScoreWeightLoad, cfg.ScoreWeights.Load); err != nil {
@@ -169,6 +174,11 @@ func applyGatewaySchedulingSettings(base config.GatewaySchedulingConfig, setting
 func validateGatewaySchedulingSettingsConfig(cfg config.GatewaySchedulingConfig) (config.GatewaySchedulingConfig, error) {
 	if cfg.PreferredAccountID < 0 {
 		return cfg, fmt.Errorf("gateway.scheduling.preferred_account_id must be non-negative")
+	}
+	for groupID, accountID := range cfg.PreferredAccountByGroupID {
+		if groupID < 0 || accountID < 0 {
+			return cfg, fmt.Errorf("gateway.scheduling.preferred_account_by_group_id must contain non-negative ids")
+		}
 	}
 	if cfg.ScoreWeights.Load < 0 || cfg.ScoreWeights.Queue < 0 || cfg.ScoreWeights.Debt < 0 || cfg.ScoreWeights.ErrorRate < 0 || cfg.ScoreWeights.Latency < 0 || cfg.ScoreWeights.RateMultiplier < 0 || cfg.ScoreWeights.QuotaRisk < 0 {
 		return cfg, fmt.Errorf("gateway.scheduling.score_weights.* must be non-negative")
@@ -274,6 +284,49 @@ func parseBoolSetting(settings map[string]string, key string, fallback bool) (bo
 	return value, nil
 }
 
+func parseInt64MapSetting(settings map[string]string, key string, fallback map[int64]int64) (map[int64]int64, error) {
+	raw := strings.TrimSpace(settings[key])
+	if raw == "" {
+		return cloneInt64Map(fallback), nil
+	}
+	var value map[int64]int64
+	if err := json.Unmarshal([]byte(raw), &value); err != nil {
+		return cloneInt64Map(fallback), fmt.Errorf("%s must be a json object", key)
+	}
+	return cloneInt64Map(value), nil
+}
+
+func cloneInt64Map(input map[int64]int64) map[int64]int64 {
+	if len(input) == 0 {
+		return map[int64]int64{}
+	}
+	out := make(map[int64]int64, len(input))
+	for key, value := range input {
+		out[key] = value
+	}
+	return out
+}
+
+func formatInt64MapSetting(value map[int64]int64) string {
+	if len(value) == 0 {
+		return "{}"
+	}
+	cleaned := make(map[int64]int64, len(value))
+	for groupID, accountID := range value {
+		if groupID >= 0 && accountID > 0 {
+			cleaned[groupID] = accountID
+		}
+	}
+	if len(cleaned) == 0 {
+		return "{}"
+	}
+	data, err := json.Marshal(cleaned)
+	if err != nil {
+		return "{}"
+	}
+	return string(data)
+}
+
 func parseDurationSetting(settings map[string]string, key string, fallback time.Duration) (time.Duration, error) {
 	raw := strings.TrimSpace(settings[key])
 	if raw == "" {
@@ -298,6 +351,7 @@ func gatewaySchedulingConfigToMap(cfg config.GatewaySchedulingConfig) map[string
 	cfg = normalizeGatewaySchedulingConfig(cfg)
 	return map[string]string{
 		SettingKeyGatewaySchedulingPreferredAccountID:          strconv.FormatInt(cfg.PreferredAccountID, 10),
+		SettingKeyGatewaySchedulingPreferredAccountByGroupID:   formatInt64MapSetting(cfg.PreferredAccountByGroupID),
 		SettingKeyGatewaySchedulingScoreWeightLoad:             strconv.FormatFloat(cfg.ScoreWeights.Load, 'f', 8, 64),
 		SettingKeyGatewaySchedulingScoreWeightQueue:            strconv.FormatFloat(cfg.ScoreWeights.Queue, 'f', 8, 64),
 		SettingKeyGatewaySchedulingScoreWeightDebt:             strconv.FormatFloat(cfg.ScoreWeights.Debt, 'f', 8, 64),

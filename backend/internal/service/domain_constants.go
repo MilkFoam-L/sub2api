@@ -487,6 +487,7 @@ const (
 
 	// Gateway scheduling policy settings
 	SettingKeyGatewaySchedulingPreferredAccountID          = "gateway_scheduling_preferred_account_id"
+	SettingKeyGatewaySchedulingPreferredAccountByGroupID   = "gateway_scheduling_preferred_account_by_group_id"
 	SettingKeyGatewaySchedulingScoreWeightLoad             = "gateway_scheduling_score_weight_load"
 	SettingKeyGatewaySchedulingScoreWeightQueue            = "gateway_scheduling_score_weight_queue"
 	SettingKeyGatewaySchedulingScoreWeightDebt             = "gateway_scheduling_score_weight_debt"

@@ -7962,6 +7962,7 @@ interface DefaultSubscriptionGroupOption {
 function defaultGatewaySchedulingSettings(): GatewaySchedulingSettings {
   return {
     preferred_account_id: 0,
+    preferred_account_by_group_id: {},
     score_weights: {
       load: 1,
       queue: 1,

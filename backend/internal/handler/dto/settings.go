@@ -62,17 +62,18 @@ type GatewaySchedulingUpstreamRateSettings struct {
 }
 
 type GatewaySchedulingSettings struct {
-	PreferredAccountID     int64                                 `json:"preferred_account_id"`
-	ScoreWeights           GatewaySchedulingScoreWeights         `json:"score_weights"`
-	LatencyBaselineMS      int                                   `json:"latency_baseline_ms"`
-	QuotaRiskThreshold     float64                               `json:"quota_risk_threshold"`
-	MaxScorePenalty        float64                               `json:"max_score_penalty"`
-	StickySessionMode      string                                `json:"sticky_session_mode"`
-	StickyEscapeScoreRatio float64                               `json:"sticky_escape_score_ratio"`
-	StickyEscapeLoadRate   int                                   `json:"sticky_escape_load_rate"`
-	ActiveProbe            GatewaySchedulingActiveProbeSettings  `json:"active_probe"`
-	SlowStart              GatewaySchedulingSlowStartSettings    `json:"slow_start"`
-	UpstreamRate           GatewaySchedulingUpstreamRateSettings `json:"upstream_rate"`
+	PreferredAccountID        int64                                 `json:"preferred_account_id"`
+	PreferredAccountByGroupID map[int64]int64                       `json:"preferred_account_by_group_id"`
+	ScoreWeights              GatewaySchedulingScoreWeights         `json:"score_weights"`
+	LatencyBaselineMS         int                                   `json:"latency_baseline_ms"`
+	QuotaRiskThreshold        float64                               `json:"quota_risk_threshold"`
+	MaxScorePenalty           float64                               `json:"max_score_penalty"`
+	StickySessionMode         string                                `json:"sticky_session_mode"`
+	StickyEscapeScoreRatio    float64                               `json:"sticky_escape_score_ratio"`
+	StickyEscapeLoadRate      int                                   `json:"sticky_escape_load_rate"`
+	ActiveProbe               GatewaySchedulingActiveProbeSettings  `json:"active_probe"`
+	SlowStart                 GatewaySchedulingSlowStartSettings    `json:"slow_start"`
+	UpstreamRate              GatewaySchedulingUpstreamRateSettings `json:"upstream_rate"`
 }
 
 // SystemSettings represents the admin settings API response payload.
