@@ -444,3 +444,28 @@
 - `frontend/src/views/admin/SchedulingView.vue`：移除页内重复标题区，补充各配置小标题的影响说明。
 - `progress.md`：追加本轮修正、验证和回滚说明。
 - 回滚方式：对本轮未提交改动执行 `git restore frontend/src/router/index.ts frontend/src/i18n/locales/zh.ts frontend/src/i18n/locales/en.ts frontend/src/views/admin/SchedulingView.vue progress.md`；如后续提交，则执行 `git revert <commit>`。
+
+## 2026-07-05 - Task: OAuth 主池优先与 API Key 兜底调度策略
+### What was done
+- 新增凭据类型调度策略，支持 `balanced`、`oauth_first`、`api_key_first` 三种模式。
+- 实现 OAuth/API Key 主池与兜底池排序：主池先按现有 priority、分组优先账号和 Weighted P2C 排序，兜底开启时主池满载或受限后继续尝试另一类账号。
+- 调度日志新增凭据策略和最终账号凭据类型，调度面板日志表格同步展示。
+- 调度面板在“调度策略配置”中新增“凭据类型策略”小卡片，不改动整体页面布局。
+- 明确过期时间只用于账号可用性过滤和提醒，不做“越快过期越优先”。
+
+### Testing
+- 通过：`GOCACHE="$PWD/../.gocache" go test ./internal/service ./internal/handler/admin -run "GatewayScheduling|SchedulerPolicyCredential|SchedulerPolicyPreferred|GatewayLegacyFallback"`。
+- 通过：`pnpm exec vitest run src/api/__tests__/settings.gatewayScheduling.spec.ts`。
+- 通过：`GOCACHE="$PWD/../.gocache" go test ./...`。
+- 通过：`pnpm run build`，仅保留 Vite 既有 dynamic import/chunk size 警告和 Browserslist 数据提示。
+- 通过：`git diff --check`。
+
+### Notes
+- `backend/internal/config/config.go`：新增凭据类型策略配置结构和值常量。
+- `backend/internal/service/account_scheduler_policy.go`：新增凭据主池/兜底池排序函数，默认 balanced 保持旧行为。
+- `backend/internal/service/gateway_service.go`、`backend/internal/service/scheduling_log_service.go`：调度路径使用凭据感知排序，并记录凭据策略和最终账号类型。
+- `backend/internal/service/domain_constants.go`、`backend/internal/service/gateway_scheduling_settings.go`：新增凭据策略 setting key、读写和校验。
+- `backend/internal/handler/dto/settings.go`、`backend/internal/handler/admin/setting_handler.go`：调度配置 API 支持凭据策略字段。
+- `frontend/src/views/admin/SchedulingView.vue`、`frontend/src/api/admin/settings.ts`、`frontend/src/api/admin/scheduling.ts`、`frontend/src/views/admin/SettingsView.vue`、`frontend/src/api/__tests__/settings.gatewayScheduling.spec.ts`：新增凭据策略配置、日志展示和前端类型/测试。
+- `docs/SCHEDULER_OPTIMIZATION_NOTES.md`、`progress.md`：同步记录凭据类型主池策略和回滚说明。
+- 回滚方式：执行 `git revert <commit>` 回退本轮功能提交；运行时可将“凭据类型策略”改回“均衡使用”并保存，立即恢复旧调度行为。

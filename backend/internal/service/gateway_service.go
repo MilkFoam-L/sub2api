@@ -2019,7 +2019,7 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 				if s.concurrencyService != nil {
 					selectionDebts, _ = s.concurrencyService.GetAccountSelectionDebtBatch(ctx, accountIDsFromLoadItems(routingAvailable))
 				}
-				routingOrder := buildWeightedP2CSelectionOrder(routingAvailable, selectionDebts, preferOAuth, cfg)
+				routingOrder := buildCredentialAwareSelectionOrder(routingAvailable, selectionDebts, preferOAuth, cfg)
 
 				// 4. 尝试获取槽位
 				for _, item := range routingOrder {
@@ -2038,17 +2038,20 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 						}
 						accountID, accountName := schedulingLogAccountFields(item.account)
 						s.recordSchedulingLog(ctx, SchedulingLogEvent{
-							Platform:           platform,
-							Model:              requestedModel,
-							GroupID:            derefGroupID(groupID),
-							CandidateCount:     len(routingCandidates),
-							AvailableCount:     len(routingAvailable),
-							AccountID:          accountID,
-							AccountName:        accountName,
-							PreferredAccountID: cfg.PreferredAccountID,
-							PreferredHit:       schedulingLogPreferredHit(item.account, cfg.PreferredAccountID),
-							StickyStatus:       "rebound",
-							Reason:             "model_routing_selected",
+							Platform:                  platform,
+							Model:                     requestedModel,
+							GroupID:                   derefGroupID(groupID),
+							CandidateCount:            len(routingCandidates),
+							AvailableCount:            len(routingAvailable),
+							AccountID:                 accountID,
+							AccountName:               accountName,
+							PreferredAccountID:        cfg.PreferredAccountID,
+							PreferredHit:              schedulingLogPreferredHit(item.account, cfg.PreferredAccountID),
+							StickyStatus:              "rebound",
+							CredentialStrategy:        cfg.Credential.Strategy,
+							CredentialFallbackEnabled: cfg.Credential.FallbackEnabled,
+							SelectedCredentialType:    schedulingLogCredentialType(item.account),
+							Reason:                    "model_routing_selected",
 						})
 						return s.newSelectionResult(ctx, item.account, true, result.ReleaseFunc, nil)
 					}
@@ -2190,17 +2193,20 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 							}
 							accountID, accountName := schedulingLogAccountFields(account)
 							s.recordSchedulingLog(ctx, SchedulingLogEvent{
-								Platform:           platform,
-								Model:              requestedModel,
-								GroupID:            derefGroupID(groupID),
-								CandidateCount:     len(accounts),
-								AvailableCount:     1,
-								AccountID:          accountID,
-								AccountName:        accountName,
-								PreferredAccountID: cfg.PreferredAccountID,
-								PreferredHit:       schedulingLogPreferredHit(account, cfg.PreferredAccountID),
-								StickyStatus:       "hit",
-								Reason:             "sticky_hit",
+								Platform:                  platform,
+								Model:                     requestedModel,
+								GroupID:                   derefGroupID(groupID),
+								CandidateCount:            len(accounts),
+								AvailableCount:            1,
+								AccountID:                 accountID,
+								AccountName:               accountName,
+								PreferredAccountID:        cfg.PreferredAccountID,
+								PreferredHit:              schedulingLogPreferredHit(account, cfg.PreferredAccountID),
+								StickyStatus:              "hit",
+								CredentialStrategy:        cfg.Credential.Strategy,
+								CredentialFallbackEnabled: cfg.Credential.FallbackEnabled,
+								SelectedCredentialType:    schedulingLogCredentialType(account),
+								Reason:                    "sticky_hit",
 							})
 							return s.newSelectionResult(ctx, account, true, result.ReleaseFunc, nil)
 						}
@@ -2305,14 +2311,16 @@ stickyLayerDone:
 
 	if len(candidates) == 0 {
 		s.recordSchedulingLog(ctx, SchedulingLogEvent{
-			Platform:           platform,
-			Model:              requestedModel,
-			GroupID:            derefGroupID(groupID),
-			CandidateCount:     len(accounts),
-			AvailableCount:     0,
-			PreferredAccountID: cfg.PreferredAccountID,
-			StickyStatus:       "miss",
-			Reason:             "no_candidates_after_filter",
+			Platform:                  platform,
+			Model:                     requestedModel,
+			GroupID:                   derefGroupID(groupID),
+			CandidateCount:            len(accounts),
+			AvailableCount:            0,
+			PreferredAccountID:        cfg.PreferredAccountID,
+			StickyStatus:              "miss",
+			CredentialStrategy:        cfg.Credential.Strategy,
+			CredentialFallbackEnabled: cfg.Credential.FallbackEnabled,
+			Reason:                    "no_candidates_after_filter",
 		})
 		return nil, ErrNoAvailableAccounts
 	}
@@ -2352,7 +2360,7 @@ stickyLayerDone:
 		if s.concurrencyService != nil {
 			selectionDebts, _ = s.concurrencyService.GetAccountSelectionDebtBatch(ctx, accountIDsFromLoadItems(available))
 		}
-		selectionOrder := buildWeightedP2CSelectionOrder(available, selectionDebts, preferOAuth, cfg)
+		selectionOrder := buildCredentialAwareSelectionOrder(available, selectionDebts, preferOAuth, cfg)
 		for _, selected := range selectionOrder {
 			result, err := s.tryAcquireAccountSlot(ctx, selected.account.ID, selected.account.Concurrency)
 			if err == nil && result.Acquired {
@@ -2365,17 +2373,20 @@ stickyLayerDone:
 					}
 					accountID, accountName := schedulingLogAccountFields(selected.account)
 					s.recordSchedulingLog(ctx, SchedulingLogEvent{
-						Platform:           platform,
-						Model:              requestedModel,
-						GroupID:            derefGroupID(groupID),
-						CandidateCount:     len(candidates),
-						AvailableCount:     len(available),
-						AccountID:          accountID,
-						AccountName:        accountName,
-						PreferredAccountID: cfg.PreferredAccountID,
-						PreferredHit:       schedulingLogPreferredHit(selected.account, cfg.PreferredAccountID),
-						StickyStatus:       "rebound",
-						Reason:             "selected",
+						Platform:                  platform,
+						Model:                     requestedModel,
+						GroupID:                   derefGroupID(groupID),
+						CandidateCount:            len(candidates),
+						AvailableCount:            len(available),
+						AccountID:                 accountID,
+						AccountName:               accountName,
+						PreferredAccountID:        cfg.PreferredAccountID,
+						PreferredHit:              schedulingLogPreferredHit(selected.account, cfg.PreferredAccountID),
+						StickyStatus:              "rebound",
+						CredentialStrategy:        cfg.Credential.Strategy,
+						CredentialFallbackEnabled: cfg.Credential.FallbackEnabled,
+						SelectedCredentialType:    schedulingLogCredentialType(selected.account),
+						Reason:                    "selected",
 					})
 					return s.newSelectionResult(ctx, selected.account, true, result.ReleaseFunc, nil)
 				}
@@ -2396,7 +2407,7 @@ stickyLayerDone:
 		if s.concurrencyService != nil {
 			fallbackDebts, _ = s.concurrencyService.GetAccountSelectionDebtBatch(ctx, accountIDsFromLoadItems(fallbackItems))
 		}
-		fallbackOrder := buildWeightedP2CSelectionOrder(fallbackItems, fallbackDebts, preferOAuth, cfg)
+		fallbackOrder := buildCredentialAwareSelectionOrder(fallbackItems, fallbackDebts, preferOAuth, cfg)
 		fallbackAccounts = fallbackAccounts[:0]
 		for _, item := range fallbackOrder {
 			fallbackAccounts = append(fallbackAccounts, item.account)
@@ -2412,17 +2423,20 @@ stickyLayerDone:
 		}
 		accountID, accountName := schedulingLogAccountFields(acc)
 		s.recordSchedulingLog(ctx, SchedulingLogEvent{
-			Platform:           platform,
-			Model:              requestedModel,
-			GroupID:            derefGroupID(groupID),
-			CandidateCount:     len(candidates),
-			AvailableCount:     len(fallbackAccounts),
-			AccountID:          accountID,
-			AccountName:        accountName,
-			PreferredAccountID: cfg.PreferredAccountID,
-			PreferredHit:       schedulingLogPreferredHit(acc, cfg.PreferredAccountID),
-			StickyStatus:       "wait_plan",
-			Reason:             "fallback_wait_plan",
+			Platform:                  platform,
+			Model:                     requestedModel,
+			GroupID:                   derefGroupID(groupID),
+			CandidateCount:            len(candidates),
+			AvailableCount:            len(fallbackAccounts),
+			AccountID:                 accountID,
+			AccountName:               accountName,
+			PreferredAccountID:        cfg.PreferredAccountID,
+			PreferredHit:              schedulingLogPreferredHit(acc, cfg.PreferredAccountID),
+			StickyStatus:              "wait_plan",
+			CredentialStrategy:        cfg.Credential.Strategy,
+			CredentialFallbackEnabled: cfg.Credential.FallbackEnabled,
+			SelectedCredentialType:    schedulingLogCredentialType(acc),
+			Reason:                    "fallback_wait_plan",
 		})
 		return s.newSelectionResult(ctx, acc, false, nil, &AccountWaitPlan{
 			AccountID:      acc.ID,
@@ -2432,14 +2446,16 @@ stickyLayerDone:
 		})
 	}
 	s.recordSchedulingLog(ctx, SchedulingLogEvent{
-		Platform:           platform,
-		Model:              requestedModel,
-		GroupID:            derefGroupID(groupID),
-		CandidateCount:     len(candidates),
-		AvailableCount:     0,
-		PreferredAccountID: cfg.PreferredAccountID,
-		StickyStatus:       "miss",
-		Reason:             "no_available_slot",
+		Platform:                  platform,
+		Model:                     requestedModel,
+		GroupID:                   derefGroupID(groupID),
+		CandidateCount:            len(candidates),
+		AvailableCount:            0,
+		PreferredAccountID:        cfg.PreferredAccountID,
+		StickyStatus:              "miss",
+		CredentialStrategy:        cfg.Credential.Strategy,
+		CredentialFallbackEnabled: cfg.Credential.FallbackEnabled,
+		Reason:                    "no_available_slot",
 	})
 	return nil, ErrNoAvailableAccounts
 }
@@ -2452,7 +2468,7 @@ func (s *GatewayService) tryAcquireByLegacyOrder(ctx context.Context, candidates
 		}
 		items = append(items, accountWithLoad{account: acc, loadInfo: &AccountLoadInfo{AccountID: acc.ID}})
 	}
-	orderedItems := buildLegacyLRUSelectionOrder(items, preferOAuth, cfg.PreferredAccountID)
+	orderedItems := buildCredentialAwareLegacyLRUSelectionOrder(items, preferOAuth, cfg)
 
 	for _, item := range orderedItems {
 		acc := item.account
@@ -2471,17 +2487,20 @@ func (s *GatewayService) tryAcquireByLegacyOrder(ctx context.Context, candidates
 			}
 			accountID, accountName := schedulingLogAccountFields(acc)
 			s.recordSchedulingLog(ctx, SchedulingLogEvent{
-				Platform:           platform,
-				Model:              requestedModel,
-				GroupID:            derefGroupID(groupID),
-				CandidateCount:     len(candidates),
-				AvailableCount:     len(orderedItems),
-				AccountID:          accountID,
-				AccountName:        accountName,
-				PreferredAccountID: cfg.PreferredAccountID,
-				PreferredHit:       schedulingLogPreferredHit(acc, cfg.PreferredAccountID),
-				StickyStatus:       "rebound",
-				Reason:             "legacy_fallback_selected",
+				Platform:                  platform,
+				Model:                     requestedModel,
+				GroupID:                   derefGroupID(groupID),
+				CandidateCount:            len(candidates),
+				AvailableCount:            len(orderedItems),
+				AccountID:                 accountID,
+				AccountName:               accountName,
+				PreferredAccountID:        cfg.PreferredAccountID,
+				PreferredHit:              schedulingLogPreferredHit(acc, cfg.PreferredAccountID),
+				StickyStatus:              "rebound",
+				CredentialStrategy:        cfg.Credential.Strategy,
+				CredentialFallbackEnabled: cfg.Credential.FallbackEnabled,
+				SelectedCredentialType:    schedulingLogCredentialType(acc),
+				Reason:                    "legacy_fallback_selected",
 			})
 			selection, err := s.newSelectionResult(ctx, acc, true, result.ReleaseFunc, nil)
 			if err != nil {
@@ -2513,6 +2532,13 @@ func schedulingLogAccountFields(account *Account) (int64, string) {
 		return 0, ""
 	}
 	return account.ID, account.Name
+}
+
+func schedulingLogCredentialType(account *Account) string {
+	if account == nil {
+		return ""
+	}
+	return account.Type
 }
 
 func schedulingLogPreferredHit(account *Account, preferredAccountID int64) bool {

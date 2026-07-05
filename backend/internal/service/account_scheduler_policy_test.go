@@ -166,6 +166,65 @@ func TestSchedulerPolicyPreferredAccountDoesNotBypassPriorityLayer(t *testing.T)
 	require.Equal(t, int64(2), order[0].account.ID, "优先账号不能绕过更高优先级层")
 }
 
+func TestSchedulerPolicyCredentialOAuthFirstUsesOAuthPoolBeforeAPIKey(t *testing.T) {
+	cfg := testWeightedP2CConfig()
+	cfg.Credential = config.GatewaySchedulingCredentialConfig{Strategy: config.GatewaySchedulingCredentialStrategyOAuthFirst, FallbackEnabled: true}
+	oauth := makeWeightedPolicyAccount(1, 0, 1, 1, 0, 0)
+	oauth.account.Type = AccountTypeOAuth
+	apiKey := makeWeightedPolicyAccount(2, 0, 1, 100, 0, 0)
+	apiKey.account.Type = AccountTypeAPIKey
+
+	order := buildCredentialAwareSelectionOrder([]accountWithLoad{apiKey, oauth}, nil, false, cfg)
+
+	require.Len(t, order, 2)
+	require.Equal(t, int64(1), order[0].account.ID, "OAuth 优先时主池应排在 API Key 兜底池前")
+	require.Equal(t, int64(2), order[1].account.ID)
+}
+
+func TestSchedulerPolicyCredentialOAuthFirstCanDisableFallbackPool(t *testing.T) {
+	cfg := testWeightedP2CConfig()
+	cfg.Credential = config.GatewaySchedulingCredentialConfig{Strategy: config.GatewaySchedulingCredentialStrategyOAuthFirst, FallbackEnabled: false}
+	oauth := makeWeightedPolicyAccount(1, 0, 1, 1, 0, 0)
+	oauth.account.Type = AccountTypeOAuth
+	apiKey := makeWeightedPolicyAccount(2, 0, 1, 100, 0, 0)
+	apiKey.account.Type = AccountTypeAPIKey
+
+	order := buildCredentialAwareSelectionOrder([]accountWithLoad{apiKey, oauth}, nil, false, cfg)
+
+	require.Len(t, order, 1)
+	require.Equal(t, int64(1), order[0].account.ID)
+}
+
+func TestSchedulerPolicyCredentialAPIKeyFirstUsesAPIKeyPoolBeforeOAuth(t *testing.T) {
+	cfg := testWeightedP2CConfig()
+	cfg.Credential = config.GatewaySchedulingCredentialConfig{Strategy: config.GatewaySchedulingCredentialStrategyAPIKeyFirst, FallbackEnabled: true}
+	oauth := makeWeightedPolicyAccount(1, 0, 1, 100, 0, 0)
+	oauth.account.Type = AccountTypeOAuth
+	apiKey := makeWeightedPolicyAccount(2, 0, 1, 1, 0, 0)
+	apiKey.account.Type = AccountTypeAPIKey
+
+	order := buildCredentialAwareSelectionOrder([]accountWithLoad{oauth, apiKey}, nil, false, cfg)
+
+	require.Len(t, order, 2)
+	require.Equal(t, int64(2), order[0].account.ID, "API Key 优先时主池应排在 OAuth 兜底池前")
+	require.Equal(t, int64(1), order[1].account.ID)
+}
+
+func TestSchedulerPolicyCredentialPreferredAccountOnlyWinsInsidePrimaryPool(t *testing.T) {
+	cfg := testWeightedP2CConfig()
+	cfg.Credential = config.GatewaySchedulingCredentialConfig{Strategy: config.GatewaySchedulingCredentialStrategyOAuthFirst, FallbackEnabled: true}
+	cfg.PreferredAccountID = 2
+	oauth := makeWeightedPolicyAccount(1, 0, 1, 1, 0, 0)
+	oauth.account.Type = AccountTypeOAuth
+	apiKey := makeWeightedPolicyAccount(2, 0, 1, 100, 0, 0)
+	apiKey.account.Type = AccountTypeAPIKey
+
+	order := buildCredentialAwareSelectionOrder([]accountWithLoad{apiKey, oauth}, nil, false, cfg)
+
+	require.Len(t, order, 2)
+	require.Equal(t, int64(1), order[0].account.ID, "兜底池优先账号不能抢过仍可用的 OAuth 主池")
+}
+
 func TestSchedulerPolicySoftStickyEscapesOverloadedAccount(t *testing.T) {
 	cfg := testWeightedP2CConfig()
 	sticky := makeWeightedPolicyAccount(1, 0, 1, 10, 8, 0)

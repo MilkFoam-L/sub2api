@@ -87,6 +87,10 @@ func (h *SettingHandler) SetNotificationEmailService(notificationEmailService *s
 }
 
 func gatewaySchedulingToDTO(cfg config.GatewaySchedulingConfig) dto.GatewaySchedulingSettings {
+	if strings.TrimSpace(cfg.Credential.Strategy) == "" {
+		cfg.Credential.Strategy = config.GatewaySchedulingCredentialStrategyBalanced
+		cfg.Credential.FallbackEnabled = true
+	}
 	return dto.GatewaySchedulingSettings{
 		PreferredAccountID:        cfg.PreferredAccountID,
 		PreferredAccountByGroupID: cfg.PreferredAccountByGroupID,
@@ -122,6 +126,10 @@ func gatewaySchedulingToDTO(cfg config.GatewaySchedulingConfig) dto.GatewaySched
 			RateWeight:      cfg.UpstreamRate.RateWeight,
 			HealthWeight:    cfg.UpstreamRate.HealthWeight,
 			MinSuccessRate:  cfg.UpstreamRate.MinSuccessRate,
+		},
+		Credential: dto.GatewaySchedulingCredentialSettings{
+			Strategy:        cfg.Credential.Strategy,
+			FallbackEnabled: cfg.Credential.FallbackEnabled,
 		},
 	}
 }
@@ -173,6 +181,11 @@ func applyGatewaySchedulingDTO(base config.GatewaySchedulingConfig, payload *dto
 	cfg.UpstreamRate.RateWeight = payload.UpstreamRate.RateWeight
 	cfg.UpstreamRate.HealthWeight = payload.UpstreamRate.HealthWeight
 	cfg.UpstreamRate.MinSuccessRate = payload.UpstreamRate.MinSuccessRate
+	cfg.Credential.Strategy = strings.ToLower(strings.TrimSpace(payload.Credential.Strategy))
+	if cfg.Credential.Strategy == "" {
+		cfg.Credential.Strategy = config.GatewaySchedulingCredentialStrategyBalanced
+	}
+	cfg.Credential.FallbackEnabled = payload.Credential.FallbackEnabled
 	if cfg.PreferredAccountID < 0 {
 		return cfg, fmt.Errorf("gateway_scheduling.preferred_account_id must be non-negative")
 	}
@@ -198,6 +211,11 @@ func applyGatewaySchedulingDTO(base config.GatewaySchedulingConfig, payload *dto
 	}
 	if cfg.UpstreamRate.StaleTTLSeconds <= 0 || cfg.UpstreamRate.RateWeight < 0 || cfg.UpstreamRate.HealthWeight < 0 || cfg.UpstreamRate.MinSuccessRate < 0 || cfg.UpstreamRate.MinSuccessRate > 1 {
 		return cfg, fmt.Errorf("gateway_scheduling upstream_rate settings are invalid")
+	}
+	switch cfg.Credential.Strategy {
+	case config.GatewaySchedulingCredentialStrategyBalanced, config.GatewaySchedulingCredentialStrategyOAuthFirst, config.GatewaySchedulingCredentialStrategyAPIKeyFirst:
+	default:
+		return cfg, fmt.Errorf("gateway_scheduling credential strategy is invalid")
 	}
 	return cfg, nil
 }

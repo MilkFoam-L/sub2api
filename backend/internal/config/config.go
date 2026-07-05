@@ -1147,6 +1147,18 @@ type GatewaySchedulingUpstreamRateConfig struct {
 	MinSuccessRate  float64 `mapstructure:"min_success_rate"`
 }
 
+const (
+	GatewaySchedulingCredentialStrategyBalanced    = "balanced"
+	GatewaySchedulingCredentialStrategyOAuthFirst  = "oauth_first"
+	GatewaySchedulingCredentialStrategyAPIKeyFirst = "api_key_first"
+)
+
+// GatewaySchedulingCredentialConfig controls credential-type pool ordering.
+type GatewaySchedulingCredentialConfig struct {
+	Strategy        string `mapstructure:"strategy"`
+	FallbackEnabled bool   `mapstructure:"fallback_enabled"`
+}
+
 // GatewaySchedulingConfig accounts scheduling configuration.
 type GatewaySchedulingConfig struct {
 	// PreferredAccountID 保留兼容旧配置；新调度面板使用 PreferredAccountByGroupID 按分组指定。
@@ -1190,6 +1202,8 @@ type GatewaySchedulingConfig struct {
 	SlowStart GatewaySchedulingSlowStartConfig `mapstructure:"slow_start"`
 	// UpstreamRate 上游倍率/可用率软成本信号；默认关闭，不改变现有调度。
 	UpstreamRate GatewaySchedulingUpstreamRateConfig `mapstructure:"upstream_rate"`
+	// Credential 凭据类型主池策略；默认 balanced，不改变现有调度。
+	Credential GatewaySchedulingCredentialConfig `mapstructure:"credential"`
 	// StickySessionMode: strict(强粘性)、soft(负载过高可逃逸)、off(关闭 session 粘性)。
 	StickySessionMode string `mapstructure:"sticky_session_mode"`
 	// StickyEscapeScoreRatio soft 粘性下 sticky cost 超过最佳同层 cost 的倍率时逃逸。

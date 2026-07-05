@@ -139,6 +139,26 @@ cost = 负载成本
 
 建议不要只复用账号全局 `priority`，而是设计分组维度策略：
 
+### 阶段五：凭据类型主池策略
+
+目标：区分 OAuth 与 API Key 两类账号的调度角色，让 OAuth 可以作为主池优先消耗，API Key 作为兜底池保障可用性。
+
+最终规则：
+
+```text
+balanced：OAuth 与 API Key 统一进入常规调度。
+oauth_first：OAuth 作为主池先排序和抢占槽位；OAuth 满载、不可用或受限时才尝试 API Key 兜底池。
+api_key_first：API Key 作为主池，OAuth 作为兜底池。
+```
+
+关键边界：
+
+- 过期时间只用于账号可用性过滤和面板提醒，不做“越快过期越优先”。
+- 凭据策略不绕过禁用、不可调度、限流、过载、额度、RPM、模型能力和分组过滤。
+- 粘性会话仍优先保障上下文稳定；粘性账号失效后再进入凭据类型策略。
+- 默认 `balanced`，不改变现有调度行为。
+
+
 - group-account 调度权重
 - group-account 成本覆盖
 - group-account 最大占比

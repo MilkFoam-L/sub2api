@@ -371,6 +371,13 @@ export interface GatewaySchedulingScoreWeights {
   quota_risk: number;
 }
 
+export type GatewaySchedulingCredentialStrategy = "balanced" | "oauth_first" | "api_key_first" | string;
+
+export interface GatewaySchedulingCredentialSettings {
+  strategy: GatewaySchedulingCredentialStrategy;
+  fallback_enabled: boolean;
+}
+
 export interface GatewaySchedulingSettings {
   preferred_account_id: number;
   preferred_account_by_group_id: Record<string, number>;
@@ -399,6 +406,7 @@ export interface GatewaySchedulingSettings {
     health_weight: number;
     min_success_rate: number;
   };
+  credential: GatewaySchedulingCredentialSettings;
 }
 
 export interface SystemSettings {

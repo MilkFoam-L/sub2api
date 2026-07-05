@@ -41,6 +41,8 @@ var gatewaySchedulingSettingKeys = []string{
 	SettingKeyGatewaySchedulingUpstreamRateRateWeight,
 	SettingKeyGatewaySchedulingUpstreamRateHealthWeight,
 	SettingKeyGatewaySchedulingUpstreamRateMinSuccessRate,
+	SettingKeyGatewaySchedulingCredentialStrategy,
+	SettingKeyGatewaySchedulingCredentialFallbackEnabled,
 }
 
 func (s *SettingService) GetGatewaySchedulingConfig(ctx context.Context) (config.GatewaySchedulingConfig, error) {
@@ -168,6 +170,12 @@ func applyGatewaySchedulingSettings(base config.GatewaySchedulingConfig, setting
 	if cfg.UpstreamRate.MinSuccessRate, err = parseFloatSetting(settings, SettingKeyGatewaySchedulingUpstreamRateMinSuccessRate, cfg.UpstreamRate.MinSuccessRate); err != nil {
 		return cfg, err
 	}
+	if strategy := strings.TrimSpace(settings[SettingKeyGatewaySchedulingCredentialStrategy]); strategy != "" {
+		cfg.Credential.Strategy = strings.ToLower(strategy)
+	}
+	if cfg.Credential.FallbackEnabled, err = parseBoolSetting(settings, SettingKeyGatewaySchedulingCredentialFallbackEnabled, cfg.Credential.FallbackEnabled); err != nil {
+		return cfg, err
+	}
 	return validateGatewaySchedulingSettingsConfig(cfg)
 }
 
@@ -232,6 +240,11 @@ func validateGatewaySchedulingSettingsConfig(cfg config.GatewaySchedulingConfig)
 	}
 	if cfg.UpstreamRate.MinSuccessRate < 0 || cfg.UpstreamRate.MinSuccessRate > 1 {
 		return cfg, fmt.Errorf("gateway.scheduling.upstream_rate.min_success_rate must be between 0 and 1")
+	}
+	switch cfg.Credential.Strategy {
+	case config.GatewaySchedulingCredentialStrategyBalanced, config.GatewaySchedulingCredentialStrategyOAuthFirst, config.GatewaySchedulingCredentialStrategyAPIKeyFirst:
+	default:
+		return cfg, fmt.Errorf("gateway.scheduling.credential.strategy must be one of %s|%s|%s", config.GatewaySchedulingCredentialStrategyBalanced, config.GatewaySchedulingCredentialStrategyOAuthFirst, config.GatewaySchedulingCredentialStrategyAPIKeyFirst)
 	}
 	return cfg, nil
 }
@@ -377,5 +390,7 @@ func gatewaySchedulingConfigToMap(cfg config.GatewaySchedulingConfig) map[string
 		SettingKeyGatewaySchedulingUpstreamRateRateWeight:      strconv.FormatFloat(cfg.UpstreamRate.RateWeight, 'f', 8, 64),
 		SettingKeyGatewaySchedulingUpstreamRateHealthWeight:    strconv.FormatFloat(cfg.UpstreamRate.HealthWeight, 'f', 8, 64),
 		SettingKeyGatewaySchedulingUpstreamRateMinSuccessRate:  strconv.FormatFloat(cfg.UpstreamRate.MinSuccessRate, 'f', 8, 64),
+		SettingKeyGatewaySchedulingCredentialStrategy:          cfg.Credential.Strategy,
+		SettingKeyGatewaySchedulingCredentialFallbackEnabled:   strconv.FormatBool(cfg.Credential.FallbackEnabled),
 	}
 }

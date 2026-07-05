@@ -82,6 +82,7 @@ func baseGatewaySchedulingTestConfig() *config.Config {
 		ScoreWeights:              config.GatewaySchedulingScoreWeights{Load: 1, Queue: 1, Debt: 1, ErrorRate: 0.8, Latency: 0.4, RateMultiplier: 0.6, QuotaRisk: 0.3},
 		ActiveProbe:               config.GatewaySchedulingActiveProbeConfig{AutoPauseEnabled: true, FailureThreshold: 3, PauseDuration: 10 * time.Minute, PauseDurationMax: time.Hour},
 		SlowStart:                 config.GatewaySchedulingSlowStartConfig{Enabled: true, Duration: 5 * time.Minute, Penalty: 1},
+		Credential:                config.GatewaySchedulingCredentialConfig{Strategy: config.GatewaySchedulingCredentialStrategyBalanced, FallbackEnabled: true},
 	}
 	return cfg
 }
@@ -114,6 +115,8 @@ func TestSettingServiceGatewaySchedulingConfigUsesDatabaseOverrides(t *testing.T
 		SettingKeyGatewaySchedulingSlowStartEnabled:            "false",
 		SettingKeyGatewaySchedulingSlowStartDuration:           "7m",
 		SettingKeyGatewaySchedulingSlowStartPenalty:            "1.7",
+		SettingKeyGatewaySchedulingCredentialStrategy:          config.GatewaySchedulingCredentialStrategyOAuthFirst,
+		SettingKeyGatewaySchedulingCredentialFallbackEnabled:   "false",
 	}}
 	svc := NewSettingService(repo, baseGatewaySchedulingTestConfig())
 
@@ -132,6 +135,8 @@ func TestSettingServiceGatewaySchedulingConfigUsesDatabaseOverrides(t *testing.T
 	require.False(t, got.SlowStart.Enabled)
 	require.Equal(t, 7*time.Minute, got.SlowStart.Duration)
 	require.Equal(t, 1.7, got.SlowStart.Penalty)
+	require.Equal(t, config.GatewaySchedulingCredentialStrategyOAuthFirst, got.Credential.Strategy)
+	require.False(t, got.Credential.FallbackEnabled)
 }
 
 func TestSettingServiceGatewaySchedulingConfigRejectsInvalidOverrideSet(t *testing.T) {
@@ -144,6 +149,18 @@ func TestSettingServiceGatewaySchedulingConfigRejectsInvalidOverrideSet(t *testi
 
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "gateway.scheduling.score_weights")
+}
+
+func TestSettingServiceGatewaySchedulingConfigRejectsInvalidCredentialStrategy(t *testing.T) {
+	repo := &gatewaySchedulingSettingRepoStub{values: map[string]string{
+		SettingKeyGatewaySchedulingCredentialStrategy: "oauth_expiry_first",
+	}}
+	svc := NewSettingService(repo, baseGatewaySchedulingTestConfig())
+
+	_, err := svc.GetGatewaySchedulingConfig(context.Background())
+
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "gateway.scheduling.credential.strategy")
 }
 
 func TestSettingServiceUpdateSettingsWritesGatewaySchedulingSettings(t *testing.T) {
@@ -173,6 +190,8 @@ func TestSettingServiceUpdateSettingsWritesGatewaySchedulingSettings(t *testing.
 	gatewayScheduling.SlowStart.Enabled = true
 	gatewayScheduling.SlowStart.Duration = 6 * time.Minute
 	gatewayScheduling.SlowStart.Penalty = 1.2
+	gatewayScheduling.Credential.Strategy = config.GatewaySchedulingCredentialStrategyOAuthFirst
+	gatewayScheduling.Credential.FallbackEnabled = false
 
 	err := svc.UpdateSettings(context.Background(), &SystemSettings{
 		GatewayScheduling: gatewayScheduling,
@@ -186,6 +205,8 @@ func TestSettingServiceUpdateSettingsWritesGatewaySchedulingSettings(t *testing.
 	require.Equal(t, config.GatewayStickySessionModeOff, repo.sets[SettingKeyGatewaySchedulingStickySessionMode])
 	require.Equal(t, "12m0s", repo.sets[SettingKeyGatewaySchedulingActiveProbePauseDuration])
 	require.Equal(t, "6m0s", repo.sets[SettingKeyGatewaySchedulingSlowStartDuration])
+	require.Equal(t, config.GatewaySchedulingCredentialStrategyOAuthFirst, repo.sets[SettingKeyGatewaySchedulingCredentialStrategy])
+	require.Equal(t, "false", repo.sets[SettingKeyGatewaySchedulingCredentialFallbackEnabled])
 }
 
 func TestSettingServiceUpdateSettingsWithAuthSourceDefaultsSkipsGatewaySchedulingSettings(t *testing.T) {
@@ -213,6 +234,8 @@ func TestSettingServiceUpdateGatewaySchedulingConfigOnlyWritesSchedulingSettings
 	cfg.PreferredAccountID = 0
 	cfg.PreferredAccountByGroupID = map[int64]int64{3: 123}
 	cfg.ScoreWeights.Latency = 0.75
+	cfg.Credential.Strategy = config.GatewaySchedulingCredentialStrategyAPIKeyFirst
+	cfg.Credential.FallbackEnabled = true
 
 	err := svc.UpdateGatewaySchedulingConfig(context.Background(), cfg)
 
@@ -220,5 +243,7 @@ func TestSettingServiceUpdateGatewaySchedulingConfigOnlyWritesSchedulingSettings
 	require.Equal(t, "0", repo.sets[SettingKeyGatewaySchedulingPreferredAccountID])
 	require.JSONEq(t, `{"3":123}`, repo.sets[SettingKeyGatewaySchedulingPreferredAccountByGroupID])
 	require.Equal(t, "0.75000000", repo.sets[SettingKeyGatewaySchedulingScoreWeightLatency])
+	require.Equal(t, config.GatewaySchedulingCredentialStrategyAPIKeyFirst, repo.sets[SettingKeyGatewaySchedulingCredentialStrategy])
+	require.Equal(t, "true", repo.sets[SettingKeyGatewaySchedulingCredentialFallbackEnabled])
 	require.NotContains(t, repo.sets, SettingKeySiteName)
 }

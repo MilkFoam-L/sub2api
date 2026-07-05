@@ -66,6 +66,31 @@
           </div>
         </div>
 
+        <div class="rounded-lg border border-gray-200 p-4 dark:border-dark-700">
+          <h3 class="text-sm font-semibold text-gray-900 dark:text-white">凭据类型策略</h3>
+          <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+            影响 OAuth / API Key 两类账号的调度顺序。OAuth 优先时先在 OAuth 主池内调度；OAuth 满载、不可用或受限时才回落 API Key。
+          </p>
+          <p class="mt-1 text-xs text-amber-600 dark:text-amber-300">
+            过期时间只用于退出调度和提醒，不会让快过期 OAuth 强行抢流量。
+          </p>
+          <div class="mt-4 grid grid-cols-1 gap-4 md:grid-cols-3">
+            <label class="field">调度策略
+              <select v-model="config.credential.strategy" class="input mt-1">
+                <option value="balanced">均衡使用</option>
+                <option value="oauth_first">OAuth 优先</option>
+                <option value="api_key_first">API Key 优先</option>
+              </select>
+            </label>
+            <label class="field md:col-span-2">兜底池
+              <select v-model="config.credential.fallback_enabled" class="input mt-1">
+                <option :value="true">主池不可用或满载时允许使用另一类账号</option>
+                <option :value="false">只使用主池，主池不可用时不兜底</option>
+              </select>
+            </label>
+          </div>
+        </div>
+
         <div>
           <h3 class="text-sm font-semibold text-gray-900 dark:text-white">阈值与粘性</h3>
           <p class="mb-3 mt-1 text-xs text-gray-500 dark:text-gray-400">影响延迟/额度风险换算，以及已有会话是否继续复用原账号或逃逸到更健康账号。</p>
@@ -134,6 +159,8 @@
               <th class="px-3 py-2">候选</th>
               <th class="px-3 py-2">优先命中</th>
               <th class="px-3 py-2">粘性</th>
+              <th class="px-3 py-2">凭据策略</th>
+              <th class="px-3 py-2">凭据类型</th>
             </tr>
           </thead>
           <tbody class="divide-y divide-gray-100 dark:divide-dark-700">
@@ -145,6 +172,8 @@
               <td class="px-3 py-2">{{ log.available_count }}/{{ log.candidate_count }}</td>
               <td class="px-3 py-2">{{ log.preferred_hit ? '是' : '否' }}</td>
               <td class="px-3 py-2">{{ log.sticky_status || '-' }}</td>
+              <td class="px-3 py-2">{{ formatCredentialStrategy(log.credential_strategy) }}</td>
+              <td class="px-3 py-2">{{ formatCredentialType(log.selected_credential_type) }}</td>
             </tr>
           </tbody>
         </table>
@@ -199,6 +228,10 @@ const defaultConfig = (): GatewaySchedulingSettings => ({
     health_weight: 0.4,
     min_success_rate: 0.8,
   },
+  credential: {
+    strategy: 'balanced',
+    fallback_enabled: true,
+  },
 })
 
 const schedulingSteps = [
@@ -225,6 +258,7 @@ function assignConfig(next: GatewaySchedulingSettings) {
   config.active_probe = { ...defaultConfig().active_probe, ...(next.active_probe || {}) }
   config.slow_start = { ...defaultConfig().slow_start, ...(next.slow_start || {}) }
   config.upstream_rate = { ...defaultConfig().upstream_rate, ...(next.upstream_rate || {}) }
+  config.credential = { ...defaultConfig().credential, ...(next.credential || {}) }
 }
 
 async function loadConfig() {
@@ -291,6 +325,30 @@ async function saveConfig() {
 function formatTime(value: string) {
   if (!value) return '-'
   return new Date(value).toLocaleString()
+}
+
+function formatCredentialStrategy(value?: string) {
+  switch (value) {
+    case 'oauth_first':
+      return 'OAuth 优先'
+    case 'api_key_first':
+      return 'API Key 优先'
+    case 'balanced':
+      return '均衡使用'
+    default:
+      return value || '-'
+  }
+}
+
+function formatCredentialType(value?: string) {
+  switch (value) {
+    case 'oauth':
+      return 'OAuth'
+    case 'api_key':
+      return 'API Key'
+    default:
+      return value || '-'
+  }
 }
 
 onMounted(() => {

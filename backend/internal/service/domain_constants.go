@@ -513,6 +513,8 @@ const (
 	SettingKeyGatewaySchedulingUpstreamRateRateWeight      = "gateway_scheduling_upstream_rate_rate_weight"
 	SettingKeyGatewaySchedulingUpstreamRateHealthWeight    = "gateway_scheduling_upstream_rate_health_weight"
 	SettingKeyGatewaySchedulingUpstreamRateMinSuccessRate  = "gateway_scheduling_upstream_rate_min_success_rate"
+	SettingKeyGatewaySchedulingCredentialStrategy          = "gateway_scheduling_credential_strategy"
+	SettingKeyGatewaySchedulingCredentialFallbackEnabled   = "gateway_scheduling_credential_fallback_enabled"
 
 	// Web Search Emulation
 	SettingKeyWebSearchEmulationConfig = "web_search_emulation_config" // JSON 配置

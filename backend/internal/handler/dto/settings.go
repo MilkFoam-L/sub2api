@@ -61,6 +61,11 @@ type GatewaySchedulingUpstreamRateSettings struct {
 	MinSuccessRate  float64 `json:"min_success_rate"`
 }
 
+type GatewaySchedulingCredentialSettings struct {
+	Strategy        string `json:"strategy"`
+	FallbackEnabled bool   `json:"fallback_enabled"`
+}
+
 type GatewaySchedulingSettings struct {
 	PreferredAccountID        int64                                 `json:"preferred_account_id"`
 	PreferredAccountByGroupID map[int64]int64                       `json:"preferred_account_by_group_id"`
@@ -74,6 +79,7 @@ type GatewaySchedulingSettings struct {
 	ActiveProbe               GatewaySchedulingActiveProbeSettings  `json:"active_probe"`
 	SlowStart                 GatewaySchedulingSlowStartSettings    `json:"slow_start"`
 	UpstreamRate              GatewaySchedulingUpstreamRateSettings `json:"upstream_rate"`
+	Credential                GatewaySchedulingCredentialSettings   `json:"credential"`
 }
 
 // SystemSettings represents the admin settings API response payload.

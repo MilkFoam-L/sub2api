@@ -46,6 +46,10 @@ func defaultGatewaySchedulingConfig() config.GatewaySchedulingConfig {
 			HealthWeight:    0.4,
 			MinSuccessRate:  0.8,
 		},
+		Credential: config.GatewaySchedulingCredentialConfig{
+			Strategy:        config.GatewaySchedulingCredentialStrategyBalanced,
+			FallbackEnabled: true,
+		},
 		StickySessionMode:      config.GatewayStickySessionModeSoft,
 		StickyEscapeScoreRatio: 1.25,
 		StickyEscapeLoadRate:   75,
@@ -58,6 +62,10 @@ func normalizeGatewaySchedulingConfig(cfg config.GatewaySchedulingConfig) config
 	cfg.StickySessionMode = strings.ToLower(strings.TrimSpace(cfg.StickySessionMode))
 	if cfg.Algorithm == "" {
 		cfg.Algorithm = config.GatewaySchedulingAlgorithmWeightedP2C
+	}
+	cfg.Credential.Strategy = strings.ToLower(strings.TrimSpace(cfg.Credential.Strategy))
+	if cfg.Credential.Strategy == "" {
+		cfg.Credential.Strategy = config.GatewaySchedulingCredentialStrategyBalanced
 	}
 	if cfg.PreferredAccountByGroupID == nil {
 		cfg.PreferredAccountByGroupID = map[int64]int64{}
@@ -276,6 +284,64 @@ func schedulingConfigForGroup(cfg config.GatewaySchedulingConfig, groupID int64)
 		cfg.PreferredAccountID = 0
 	}
 	return cfg
+}
+
+func buildCredentialAwareSelectionOrder(accounts []accountWithLoad, selectionDebts map[int64]int, preferOAuth bool, cfg config.GatewaySchedulingConfig) []accountWithLoad {
+	if len(accounts) == 0 {
+		return nil
+	}
+	cfg = normalizeGatewaySchedulingConfig(cfg)
+	primaryType := credentialPrimaryAccountType(cfg.Credential.Strategy)
+	if primaryType == "" {
+		return buildWeightedP2CSelectionOrder(accounts, selectionDebts, preferOAuth, cfg)
+	}
+	primary, fallback := partitionByCredentialType(accounts, primaryType)
+	order := buildWeightedP2CSelectionOrder(primary, selectionDebts, preferOAuth, cfg)
+	if cfg.Credential.FallbackEnabled {
+		order = append(order, buildWeightedP2CSelectionOrder(fallback, selectionDebts, preferOAuth, cfg)...)
+	}
+	return order
+}
+
+func buildCredentialAwareLegacyLRUSelectionOrder(accounts []accountWithLoad, preferOAuth bool, cfg config.GatewaySchedulingConfig) []accountWithLoad {
+	if len(accounts) == 0 {
+		return nil
+	}
+	cfg = normalizeGatewaySchedulingConfig(cfg)
+	primaryType := credentialPrimaryAccountType(cfg.Credential.Strategy)
+	if primaryType == "" {
+		return buildLegacyLRUSelectionOrder(accounts, preferOAuth, cfg.PreferredAccountID)
+	}
+	primary, fallback := partitionByCredentialType(accounts, primaryType)
+	order := buildLegacyLRUSelectionOrder(primary, preferOAuth, cfg.PreferredAccountID)
+	if cfg.Credential.FallbackEnabled {
+		order = append(order, buildLegacyLRUSelectionOrder(fallback, preferOAuth, cfg.PreferredAccountID)...)
+	}
+	return order
+}
+
+func credentialPrimaryAccountType(strategy string) string {
+	switch strategy {
+	case config.GatewaySchedulingCredentialStrategyOAuthFirst:
+		return AccountTypeOAuth
+	case config.GatewaySchedulingCredentialStrategyAPIKeyFirst:
+		return AccountTypeAPIKey
+	default:
+		return ""
+	}
+}
+
+func partitionByCredentialType(accounts []accountWithLoad, primaryType string) ([]accountWithLoad, []accountWithLoad) {
+	primary := make([]accountWithLoad, 0, len(accounts))
+	fallback := make([]accountWithLoad, 0, len(accounts))
+	for _, item := range accounts {
+		if item.account != nil && item.account.Type == primaryType {
+			primary = append(primary, item)
+			continue
+		}
+		fallback = append(fallback, item)
+	}
+	return primary, fallback
 }
 
 func buildWeightedP2CSelectionOrder(accounts []accountWithLoad, selectionDebts map[int64]int, preferOAuth bool, cfg config.GatewaySchedulingConfig) []accountWithLoad {

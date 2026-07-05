@@ -15,6 +15,9 @@ export interface SchedulingLogEvent {
   preferred_account_id?: number
   preferred_hit: boolean
   sticky_status?: SchedulingStickyStatus
+  credential_strategy?: string
+  credential_fallback_enabled?: boolean
+  selected_credential_type?: string
   reason: string
   filter_summary?: Record<string, number>
   request_id?: string

@@ -51,6 +51,10 @@ describe('admin scheduling config payload', () => {
         health_weight: 0.4,
         min_success_rate: 0.8,
       },
+      credential: {
+        strategy: 'oauth_first',
+        fallback_enabled: true,
+      },
     } satisfies GatewaySchedulingSettings
 
     put.mockResolvedValueOnce({ data: payload })
