@@ -469,3 +469,26 @@
 - `frontend/src/views/admin/SchedulingView.vue`、`frontend/src/api/admin/settings.ts`、`frontend/src/api/admin/scheduling.ts`、`frontend/src/views/admin/SettingsView.vue`、`frontend/src/api/__tests__/settings.gatewayScheduling.spec.ts`：新增凭据策略配置、日志展示和前端类型/测试。
 - `docs/SCHEDULER_OPTIMIZATION_NOTES.md`、`progress.md`：同步记录凭据类型主池策略和回滚说明。
 - 回滚方式：执行 `git revert <commit>` 回退本轮功能提交；运行时可将“凭据类型策略”改回“均衡使用”并保存，立即恢复旧调度行为。
+
+## 2026-07-06 - Task: 合并上游 v0.1.145 发布版
+### What was done
+- 在确认工作区干净后，抓取并合并 `Wei-Shaw/sub2api` 的 `v0.1.145` 发布标签内容到当前分支。
+- 解决合并冲突，保留本分支调度面板能力，同时合入上游高级调度、EasyPay、支付配置、账号过滤、WebSocket 和多语言等更新。
+- 修复合并后 OpenAI WS ingress 调度兼容问题：`responses_websockets_v2_ingress` 可正确匹配 WSv2/passthrough 与 HTTP bridge 模式。
+- 修复 simple 模式和测试场景下调度快照为空时的 repo 回退路径，避免误报 `no available account`。
+
+### Testing
+- 通过：`GOCACHE="C:/Users/MilkFoam/AppData/Local/go-build" go test ./...`。
+- 通过：`npx vue-tsc --noEmit`。
+- 通过：`npx tsc --noEmit -p tsconfig.node.json`。
+- 通过：`npx vite build`，仅保留既有 Browserslist 过旧、dynamic import 和 chunk size 警告。
+- 说明：`npm run build` 在 Git Bash 下仅返回退出码 1 且无详细错误；已用同等分段命令完成类型检查和 Vite 构建验证，后续 Docker 构建会继续覆盖真实发布链路。
+
+### Notes
+- `backend/internal/handler/admin/setting_handler.go`：合并设置响应字段，移除冲突残留重复字段块，保留调度与支付新增字段。
+- `backend/internal/service/openai_account_scheduler.go`：补齐高级调度额度余量常量、影子账号母账号健康回退和 WS ingress 传输兼容逻辑。
+- `backend/internal/service/openai_gateway_service.go`：simple 模式调度候选与账号刷新优先走 repo，避免空快照误淘汰账号。
+- `backend/internal/service/openai_account_scheduler_test.go`：补回分组感知调度测试 stub。
+- `README.md`、`README_CN.md`、`README_JA.md`、`backend/`、`frontend/`、`deploy/`：合并上游 v0.1.145 发布版主体改动。
+- `progress.md`：追加本轮合并、验证和回滚说明。
+- 回滚方式：对本轮合并提交执行 `git revert -m 1 <merge_commit>`；若只回退本轮冲突修复，可对后续修复提交执行 `git revert <commit>`，或按上述文件逐项恢复。
