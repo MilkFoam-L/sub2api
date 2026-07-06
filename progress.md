@@ -474,6 +474,7 @@
 ### What was done
 - 在确认工作区干净后，抓取并合并 `Wei-Shaw/sub2api` 的 `v0.1.145` 发布标签内容到当前分支。
 - 解决合并冲突，保留本分支调度面板能力，同时合入上游高级调度、EasyPay、支付配置、账号过滤、WebSocket 和多语言等更新。
+- 同步运行时版本文件为 `0.1.145`，确保 Docker 镜像版本与本次合并发布版一致。
 - 修复合并后 OpenAI WS ingress 调度兼容问题：`responses_websockets_v2_ingress` 可正确匹配 WSv2/passthrough 与 HTTP bridge 模式。
 - 修复 simple 模式和测试场景下调度快照为空时的 repo 回退路径，避免误报 `no available account`。
 
@@ -485,6 +486,7 @@
 - 说明：`npm run build` 在 Git Bash 下仅返回退出码 1 且无详细错误；已用同等分段命令完成类型检查和 Vite 构建验证，后续 Docker 构建会继续覆盖真实发布链路。
 
 ### Notes
+- `backend/cmd/server/VERSION`：同步运行时版本号为 `0.1.145`。
 - `backend/internal/handler/admin/setting_handler.go`：合并设置响应字段，移除冲突残留重复字段块，保留调度与支付新增字段。
 - `backend/internal/service/openai_account_scheduler.go`：补齐高级调度额度余量常量、影子账号母账号健康回退和 WS ingress 传输兼容逻辑。
 - `backend/internal/service/openai_gateway_service.go`：simple 模式调度候选与账号刷新优先走 repo，避免空快照误淘汰账号。
