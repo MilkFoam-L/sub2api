@@ -10,24 +10,24 @@ const defaultSchedulingLogCapacity = 200
 // SchedulingLogEvent 是调度面板展示的最近调度事件。
 // 仅记录排障必要元数据，不包含请求正文、密钥或 token。
 type SchedulingLogEvent struct {
-	CreatedAt                 time.Time      `json:"created_at"`
-	Platform                  string         `json:"platform,omitempty"`
-	Model                     string         `json:"model,omitempty"`
-	GroupID                   int64          `json:"group_id,omitempty"`
-	CandidateCount            int            `json:"candidate_count"`
-	AvailableCount            int            `json:"available_count"`
-	AccountID                 int64          `json:"account_id,omitempty"`
-	AccountName               string         `json:"account_name,omitempty"`
-	PreferredAccountID        int64          `json:"preferred_account_id,omitempty"`
-	PreferredHit              bool           `json:"preferred_hit"`
+	CreatedAt          time.Time         `json:"created_at"`
+	Platform           string            `json:"platform,omitempty"`
+	Model              string            `json:"model,omitempty"`
+	GroupID            int64             `json:"group_id,omitempty"`
+	CandidateCount     int               `json:"candidate_count"`
+	AvailableCount     int               `json:"available_count"`
+	AccountID          int64             `json:"account_id,omitempty"`
+	AccountName        string            `json:"account_name,omitempty"`
+	PreferredAccountID int64             `json:"preferred_account_id,omitempty"`
+	PreferredHit       bool              `json:"preferred_hit"`
 	StickyStatus              string         `json:"sticky_status,omitempty"`
 	CredentialStrategy        string         `json:"credential_strategy,omitempty"`
 	CredentialFallbackEnabled bool           `json:"credential_fallback_enabled"`
 	SelectedCredentialType    string         `json:"selected_credential_type,omitempty"`
 	Reason                    string         `json:"reason"`
-	FilterSummary             map[string]int `json:"filter_summary,omitempty"`
-	RequestID                 string         `json:"request_id,omitempty"`
-	ClientRequestID           string         `json:"client_request_id,omitempty"`
+	FilterSummary      map[string]int    `json:"filter_summary,omitempty"`
+	RequestID          string            `json:"request_id,omitempty"`
+	ClientRequestID    string            `json:"client_request_id,omitempty"`
 }
 
 // SchedulingLogService 保存最近调度事件的内存环形日志。
