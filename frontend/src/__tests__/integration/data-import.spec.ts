@@ -5,11 +5,13 @@ import { adminAPI } from '@/api/admin'
 
 const showError = vi.fn()
 const showSuccess = vi.fn()
+const showWarning = vi.fn()
 
 vi.mock('@/stores/app', () => ({
   useAppStore: () => ({
     showError,
-    showSuccess
+    showSuccess,
+    showWarning
   })
 }))
 
@@ -24,7 +26,7 @@ vi.mock('@/api/admin', () => ({
 vi.mock('vue-i18n', () => ({
   useI18n: () => ({
     t: (key: string, params?: Record<string, unknown>) => {
-      if (key === 'admin.accounts.dataImportSelectedFiles') {
+      if (key === 'admin.accounts.selectedCount') {
         return `selected ${params?.count}`
       }
       return key
@@ -86,34 +88,50 @@ const mountModal = (props: Record<string, unknown> = {}) => mount(ImportDataModa
   global: {
     stubs: {
       BaseDialog: { template: '<div><slot /><slot name="footer" /></div>' },
-      GroupBadge: { props: ['name'], template: '<span>{{ name }}</span>' },
-      Icon: true,
-      PlatformIcon: true
+      GroupSelector: {
+        props: ['modelValue', 'groups', 'platform', 'label', 'hint'],
+        emits: ['update:modelValue'],
+        template: `
+          <div>
+            <div>{{ label }}</div>
+            <div>{{ hint }}</div>
+            <label v-for="group in groups.filter((item) => item.platform === platform)" :key="group.id">
+              <input
+                type="checkbox"
+                :value="group.id"
+                :checked="modelValue.includes(group.id)"
+                @change="$emit('update:modelValue', $event.target.checked ? [...modelValue, group.id] : modelValue.filter((id) => id !== group.id))"
+              />
+              {{ group.name }}
+            </label>
+          </div>
+        `
+      }
     }
   }
 })
 
-const setInputFiles = (input: ReturnType<ReturnType<typeof mountModal>['find']>, files: File[]) => {
-  Object.defineProperty(input.element, 'files', {
-    value: files,
-    configurable: true
-  })
-}
-
-const createJsonFile = (content: unknown, name: string) => {
-  const text = typeof content === 'string' ? content : JSON.stringify(content)
-  const file = new File([text], name, { type: 'application/json' })
+const makeJsonFile = (name: string, content: string, type = 'application/json') => {
+  const file = new File([content], name, { type })
   Object.defineProperty(file, 'text', {
-    value: () => Promise.resolve(text),
+    value: () => Promise.resolve(content),
     configurable: true
   })
   return file
+}
+
+const setInputFiles = (element: Element, files: File[]) => {
+  Object.defineProperty(element, 'files', {
+    value: files,
+    configurable: true
+  })
 }
 
 describe('ImportDataModal', () => {
   beforeEach(() => {
     showError.mockReset()
     showSuccess.mockReset()
+    showWarning.mockReset()
     importDataMock.mockReset()
   })
 
@@ -124,49 +142,95 @@ describe('ImportDataModal', () => {
     expect(showError).toHaveBeenCalledWith('admin.accounts.dataImportSelectFile')
   })
 
-  it('无效 JSON 时提示解析失败', async () => {
+  it('无效 JSON 时按文件名提示解析失败', async () => {
     const wrapper = mountModal()
 
     const input = wrapper.find('input[type="file"]')
-    const file = createJsonFile('invalid json', 'data.json')
-    setInputFiles(input, [file])
+    setInputFiles(input.element, [makeJsonFile('data.json', 'invalid json')])
 
     await input.trigger('change')
     await wrapper.find('form').trigger('submit')
     await flushPromises()
 
-    expect(showError).toHaveBeenCalledWith('admin.accounts.dataImportParseFailed')
+    expect(showError).toHaveBeenCalledWith('admin.accounts.dataImportParseFailedFile')
     expect(importDataMock).not.toHaveBeenCalled()
   })
 
-  it('支持选择多个 JSON 文件并逐个导入后汇总结果', async () => {
+  it('不是导出数据的 JSON 按文件名拒绝', async () => {
     const wrapper = mountModal()
 
-    importDataMock
-      .mockResolvedValueOnce({
-        proxy_created: 1,
-        proxy_reused: 0,
-        proxy_failed: 0,
-        account_created: 2,
-        account_failed: 0,
-        errors: []
-      })
-      .mockResolvedValueOnce({
-        proxy_created: 0,
-        proxy_reused: 1,
-        proxy_failed: 0,
-        account_created: 3,
-        account_failed: 0,
-        errors: []
-      })
-
-    const firstPayload = { version: 1, accounts: [{ name: 'a' }], proxies: [] }
-    const secondPayload = { version: 1, accounts: [{ name: 'b' }], proxies: [] }
     const input = wrapper.find('input[type="file"]')
-    setInputFiles(input, [
-      createJsonFile(firstPayload, 'first.json'),
-      createJsonFile(secondPayload, 'second.json')
-    ])
+    setInputFiles(input.element, [makeJsonFile('random.json', JSON.stringify({ name: 'test' }))])
+
+    await input.trigger('change')
+    await wrapper.find('form').trigger('submit')
+    await flushPromises()
+
+    expect(showError).toHaveBeenCalledWith('admin.accounts.dataImportInvalidFile')
+    expect(importDataMock).not.toHaveBeenCalled()
+  })
+
+  it('无有效 JSON 的选择不清空已有选择', async () => {
+    importDataMock.mockResolvedValue({
+      proxy_created: 0,
+      proxy_reused: 0,
+      proxy_failed: 0,
+      account_created: 1,
+      account_failed: 0,
+      errors: []
+    })
+
+    const wrapper = mountModal()
+    const input = wrapper.find('input[type="file"]')
+
+    const valid = makeJsonFile(
+      'valid.json',
+      JSON.stringify({ exported_at: '2026-07-05T00:00:00Z', proxies: [], accounts: [{ name: 'a' }] })
+    )
+    setInputFiles(input.element, [valid])
+    await input.trigger('change')
+
+    setInputFiles(input.element, [new File(['hello'], 'notes.txt', { type: 'text/plain' })])
+    await input.trigger('change')
+    expect(showError).toHaveBeenCalledWith('admin.accounts.dataImportSelectFile')
+
+    await wrapper.find('form').trigger('submit')
+    await flushPromises()
+
+    expect(importDataMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        accounts: [{ name: 'a' }]
+      }),
+      skip_default_group_bind: true,
+      group_ids: []
+    })
+  })
+
+  it('支持选择多个 JSON 文件并合并后导入', async () => {
+    importDataMock.mockResolvedValue({
+      proxy_created: 0,
+      proxy_reused: 0,
+      proxy_failed: 0,
+      account_created: 2,
+      account_failed: 0,
+      errors: []
+    })
+
+    const wrapper = mountModal()
+    const input = wrapper.find('input[type="file"]')
+    const first = makeJsonFile(
+      'first.json',
+      JSON.stringify({ exported_at: '2026-07-05T00:00:00Z', proxies: [], accounts: [{ name: 'a' }] })
+    )
+    const second = makeJsonFile(
+      'second.json',
+      JSON.stringify({
+        exported_at: '2026-07-05T00:00:01Z',
+        proxies: [{ proxy_key: 'p' }],
+        accounts: [{ name: 'b' }]
+      })
+    )
+    setInputFiles(input.element, [first, second])
 
     await input.trigger('change')
     expect(wrapper.text()).toContain('selected 2')
@@ -174,46 +238,39 @@ describe('ImportDataModal', () => {
     await wrapper.find('form').trigger('submit')
     await flushPromises()
 
-    expect(importDataMock).toHaveBeenCalledTimes(2)
-    expect(importDataMock).toHaveBeenNthCalledWith(1, {
-      data: firstPayload,
-      skip_default_group_bind: true,
-      group_ids: []
-    })
-    expect(importDataMock).toHaveBeenNthCalledWith(2, {
-      data: secondPayload,
+    expect(importDataMock).toHaveBeenCalledTimes(1)
+    expect(importDataMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        proxies: [{ proxy_key: 'p' }],
+        accounts: [{ name: 'a' }, { name: 'b' }]
+      }),
       skip_default_group_bind: true,
       group_ids: []
     })
     expect(showSuccess).toHaveBeenCalledWith('admin.accounts.dataImportSuccess')
-    expect(wrapper.text()).toContain('admin.accounts.dataImportResultSummary')
   })
 
-  it('多文件导入会汇总失败数量并为错误详情标记来源文件', async () => {
+  it('部分成功时关闭弹窗仍通知父组件刷新', async () => {
+    importDataMock.mockResolvedValue({
+      proxy_created: 0,
+      proxy_reused: 0,
+      proxy_failed: 0,
+      account_created: 1,
+      account_failed: 1,
+      errors: []
+    })
+
     const wrapper = mountModal()
-
-    importDataMock
-      .mockResolvedValueOnce({
-        proxy_created: 0,
-        proxy_reused: 0,
-        proxy_failed: 0,
-        account_created: 1,
-        account_failed: 0,
-        errors: []
-      })
-      .mockResolvedValueOnce({
-        proxy_created: 0,
-        proxy_reused: 0,
-        proxy_failed: 0,
-        account_created: 0,
-        account_failed: 1,
-        errors: [{ kind: 'account', name: 'broken', message: 'duplicate' }]
-      })
-
     const input = wrapper.find('input[type="file"]')
-    setInputFiles(input, [
-      createJsonFile({ version: 1, accounts: [{ name: 'ok' }], proxies: [] }, 'ok.json'),
-      createJsonFile({ version: 1, accounts: [{ name: 'broken' }], proxies: [] }, 'bad.json')
+    setInputFiles(input.element, [
+      makeJsonFile(
+        'mixed.json',
+        JSON.stringify({
+          exported_at: '2026-07-05T00:00:00Z',
+          proxies: [],
+          accounts: [{ name: 'a' }, { name: 'b' }]
+        })
+      )
     ])
 
     await input.trigger('change')
@@ -221,7 +278,12 @@ describe('ImportDataModal', () => {
     await flushPromises()
 
     expect(showError).toHaveBeenCalledWith('admin.accounts.dataImportCompletedWithErrors')
-    expect(wrapper.text()).toContain('[bad.json] duplicate')
+    expect(wrapper.emitted('imported')).toBeUndefined()
+
+    await wrapper.findAll('button.btn-secondary')[1]!.trigger('click')
+
+    expect(wrapper.emitted('imported')).toHaveLength(1)
+    expect(wrapper.emitted('close')).toHaveLength(1)
   })
 
   it('导入分组选择器只显示 OpenAI 分组并使用导入专用文案', () => {
@@ -229,7 +291,6 @@ describe('ImportDataModal', () => {
 
     expect(wrapper.text()).toContain('admin.accounts.dataImportGroups')
     expect(wrapper.text()).toContain('admin.accounts.dataImportGroupsHint')
-    expect(wrapper.text()).not.toContain('admin.users.groups')
     expect(wrapper.text()).toContain('openai-default')
     expect(wrapper.text()).toContain('openai-plus')
     expect(wrapper.text()).not.toContain('claude-default')
@@ -252,7 +313,7 @@ describe('ImportDataModal', () => {
 
     const payload = { version: 1, accounts: [{ name: 'a' }], proxies: [] }
     const input = wrapper.find('input[type="file"]')
-    setInputFiles(input, [createJsonFile(payload, 'data.json')])
+    setInputFiles(input.element, [makeJsonFile('data.json', JSON.stringify(payload))])
 
     await input.trigger('change')
     await wrapper.find('form').trigger('submit')

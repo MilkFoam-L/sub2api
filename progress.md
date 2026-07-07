@@ -510,3 +510,27 @@
 ### Notes
 - `progress.md`：追加本轮 Docker 构建、推送、验证和回滚说明。
 - 回滚方式：部署端可将镜像 tag 回切到上一次已知可用版本；代码层面可回退到提交 `f6fe8374` 之前的版本，或对本轮日志提交执行 `git revert`。
+
+## 2026-07-07 - Task: 合并上游 v0.1.146 发布版
+### What was done
+- 在确认工作区干净后，抓取并合并 `Wei-Shaw/sub2api` 的 `v0.1.146` 发布标签内容到当前分支。
+- 解决合并冲突，保留本分支导入账号时绑定 OpenAI 分组的能力，同时合入上游拖拽上传、多文件合并导入、API Key 并发统计、账号请求头覆写、账号批量导入和新模型计价等更新。
+- 同步运行时版本文件为 `0.1.146`，确保后续镜像版本与本次合并发布版一致。
+
+### Testing
+- 通过：`GOCACHE="C:/Users/MilkFoam/AppData/Local/go-build" go test ./...`。
+- 通过：`npx vue-tsc --noEmit`。
+- 通过：`npx tsc --noEmit -p tsconfig.node.json`。
+- 通过：`npx vitest run src/__tests__/integration/data-import.spec.ts`，导入弹窗 8 个回归测试通过。
+- 通过：`npx vite build`，仅保留既有 Browserslist 过旧、dynamic import 和 chunk size 警告。
+- 通过：`git diff --check`，未发现空白错误或冲突标记。
+
+### Notes
+- `backend/cmd/server/VERSION`：同步运行时版本号为 `0.1.146`。
+- `backend/internal/service/concurrency_service.go`：合并账号调度 debt 缓存接口与 API Key 并发统计缓存接口。
+- `backend/internal/service/pricing_service.go`：合并 GPT-5.6 回退计价逻辑并保留 GPT-5.5 专用计价。
+- `frontend/src/components/admin/account/ImportDataModal.vue`：合并拖拽/多文件导入与导入分组选择能力。
+- `frontend/src/__tests__/integration/data-import.spec.ts`：重写导入弹窗回归测试，覆盖批量合并、文件校验、部分成功刷新和分组提交。
+- `backend/`、`frontend/`、`.github/`：合并上游 v0.1.146 发布版主体改动。
+- `progress.md`：追加本轮合并、验证和回滚说明。
+- 回滚方式：对本轮合并提交执行 `git revert -m 1 <merge_commit>`；若只回退本轮冲突修复，可对后续修复提交执行 `git revert <commit>`，或按上述文件逐项恢复。
