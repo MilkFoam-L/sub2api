@@ -418,6 +418,18 @@ func (s *stubAdminService) UpdateAccount(ctx context.Context, id int64, input *s
 	return &account, nil
 }
 
+func (s *stubAdminService) SetOpenAITeam401Retryable(ctx context.Context, id int64, enabled bool) (*service.Account, error) {
+	account := service.Account{
+		ID:          id,
+		Name:        "account",
+		Platform:    service.PlatformOpenAI,
+		Type:        service.AccountTypeOAuth,
+		Status:      service.StatusActive,
+		Credentials: map[string]any{service.OpenAITeam401RetryableCredentialKey: enabled},
+	}
+	return &account, nil
+}
+
 func (s *stubAdminService) UpdateAccountExtra(ctx context.Context, id int64, updates map[string]any) error {
 	return nil
 }

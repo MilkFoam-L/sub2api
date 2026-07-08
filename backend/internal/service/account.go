@@ -88,6 +88,7 @@ const (
 )
 
 const openAIEndpointCapabilitiesCredentialKey = "openai_capabilities"
+const OpenAITeam401RetryableCredentialKey = "openai_team_401_retryable"
 
 const (
 	OpenAIAuthModePersonalAccessToken = "personalAccessToken"
@@ -359,6 +360,14 @@ func (a *Account) IsTempUnschedulableEnabled() bool {
 		return false
 	}
 	enabled, ok := raw.(bool)
+	return ok && enabled
+}
+
+func (a *Account) IsOpenAITeam401Retryable() bool {
+	if a == nil || a.Platform != PlatformOpenAI || a.Type != AccountTypeOAuth || a.Credentials == nil {
+		return false
+	}
+	enabled, ok := a.Credentials[OpenAITeam401RetryableCredentialKey].(bool)
 	return ok && enabled
 }
 

@@ -168,3 +168,29 @@ git revert <feature_commit>
 1. 如果需要长期审计调度行为，再把内存调度日志扩展为数据库持久化日志；当前实现只面向近期排障。
 2. 如果需要“每分组优先账号”，应新增分组维度策略，不应复用单个全局优先账号字段。
 3. 如果需要自动优先级治理，应通过治理层批量维护账号参数，运行时调度仍保留硬过滤、粘性会话和 Weighted P2C。
+
+## 已落地：OpenAI Team OAuth 特定 401 手动 failover 开关
+
+账号管理页“更多”菜单为 OpenAI OAuth 母账号新增“401team 可重试”显式开关。该开关写入 `credentials.openai_team_401_retryable`，默认关闭，不通过“是否 Team”自动判断。
+
+启用后，仅当该账号遇到特定 401 信号时改变处理方式：
+
+- `no_matching_rule`。
+- 缺少 `refresh_token` 且上游返回 `Unauthorized`。
+
+命中后不会直接写入账号 `error`，也不会进入 OAuth refresh 冷却，而是返回给现有上游 failover 流程继续换号/重新调度。这样避免在坏账号上做同账号原地重试，同时只影响管理员显式标记的 OpenAI OAuth 账号。
+
+写入方式使用专用管理员接口：
+
+```text
+POST /api/v1/admin/accounts/:id/openai-team-401-retryable
+body: { "enabled": true | false }
+```
+
+后端只对 `credentials` 做 JSONB 增量合并，不复用账号全量更新接口，避免前端拿到脱敏 credentials 后误覆盖其他凭据字段。
+
+### 回滚与降级
+
+运行时快速降级：在账号“更多”菜单关闭“401team 可重试”。
+
+代码回滚：回退账号菜单/API/handler/service/repository/401 判定相关改动即可恢复原行为；已经写入的 `credentials.openai_team_401_retryable=false` 为中性，`true` 在代码回滚后不会被读取。

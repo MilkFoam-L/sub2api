@@ -9,6 +9,10 @@ type accountCredentialsUpdater interface {
 	UpdateCredentials(ctx context.Context, id int64, credentials map[string]any) error
 }
 
+type accountCredentialFieldsUpdater interface {
+	UpdateCredentialFields(ctx context.Context, id int64, updates map[string]any) error
+}
+
 func persistAccountCredentials(ctx context.Context, repo AccountRepository, account *Account, credentials map[string]any) error {
 	if repo == nil || account == nil {
 		return nil

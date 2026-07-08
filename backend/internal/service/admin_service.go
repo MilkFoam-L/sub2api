@@ -88,6 +88,8 @@ type AdminService interface {
 	GetAccountsByIDs(ctx context.Context, ids []int64) ([]*Account, error)
 	CreateAccount(ctx context.Context, input *CreateAccountInput) (*Account, error)
 	UpdateAccount(ctx context.Context, id int64, input *UpdateAccountInput) (*Account, error)
+	// SetOpenAITeam401Retryable 仅修改 credentials.openai_team_401_retryable 单键，避免全量覆盖脱敏凭据。
+	SetOpenAITeam401Retryable(ctx context.Context, id int64, enabled bool) (*Account, error)
 	// UpdateAccountExtra 仅对 Extra 做 JSONB 增量合并（key 级覆盖），不会影响其它字段或运行态键。
 	// 用于刷新流程持久化 account_uuid / org_uuid 等少量键，避免被全量快照覆盖。
 	UpdateAccountExtra(ctx context.Context, id int64, updates map[string]any) error
@@ -2784,6 +2786,30 @@ func (s *adminServiceImpl) CreateAccount(ctx context.Context, input *CreateAccou
 		}
 	}
 
+	return account, nil
+}
+
+func (s *adminServiceImpl) SetOpenAITeam401Retryable(ctx context.Context, id int64, enabled bool) (*Account, error) {
+	account, err := s.accountRepo.GetByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if account.Platform != PlatformOpenAI || account.Type != AccountTypeOAuth || account.IsCredentialShadow() {
+		return nil, infraerrors.New(http.StatusBadRequest, "OPENAI_TEAM_401_RETRYABLE_UNSUPPORTED",
+			"401 team retryable switch is only supported for OpenAI OAuth parent accounts")
+	}
+	updater, ok := any(s.accountRepo).(accountCredentialFieldsUpdater)
+	if !ok {
+		return nil, infraerrors.New(http.StatusInternalServerError, "CREDENTIAL_PATCH_UNSUPPORTED",
+			"account repository does not support credential field patching")
+	}
+	if err := updater.UpdateCredentialFields(ctx, id, map[string]any{OpenAITeam401RetryableCredentialKey: enabled}); err != nil {
+		return nil, err
+	}
+	if account.Credentials == nil {
+		account.Credentials = map[string]any{}
+	}
+	account.Credentials[OpenAITeam401RetryableCredentialKey] = enabled
 	return account, nil
 }
 

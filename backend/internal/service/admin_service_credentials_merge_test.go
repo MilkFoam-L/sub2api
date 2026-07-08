@@ -11,8 +11,10 @@ import (
 
 type updateAccountCredsRepoStub struct {
 	mockAccountRepoForGemini
-	account     *Account
-	updateCalls int
+	account                      *Account
+	updateCalls                  int
+	updateCredentialsFieldsCalls int
+	lastCredentialFieldPatch     map[string]any
 }
 
 func (r *updateAccountCredsRepoStub) GetByID(ctx context.Context, id int64) (*Account, error) {
@@ -22,6 +24,18 @@ func (r *updateAccountCredsRepoStub) GetByID(ctx context.Context, id int64) (*Ac
 func (r *updateAccountCredsRepoStub) Update(ctx context.Context, account *Account) error {
 	r.updateCalls++
 	r.account = account
+	return nil
+}
+
+func (r *updateAccountCredsRepoStub) UpdateCredentialFields(ctx context.Context, id int64, updates map[string]any) error {
+	r.updateCredentialsFieldsCalls++
+	r.lastCredentialFieldPatch = shallowCopyMap(updates)
+	if r.account.Credentials == nil {
+		r.account.Credentials = map[string]any{}
+	}
+	for key, value := range updates {
+		r.account.Credentials[key] = value
+	}
 	return nil
 }
 
@@ -114,4 +128,59 @@ func TestUpdateAccount_EmptyCredentialsSkipsUpdate(t *testing.T) {
 
 	require.Equal(t, "rt-existing", repo.account.Credentials["refresh_token"], "空 credentials 不应触碰已有 token")
 	require.Equal(t, "renamed", repo.account.Name)
+}
+
+func TestSetOpenAITeam401Retryable_UpdatesOnlyFlagForOpenAIOAuth(t *testing.T) {
+	accountID := int64(205)
+	repo := &updateAccountCredsRepoStub{
+		account: &Account{
+			ID:       accountID,
+			Platform: PlatformOpenAI,
+			Type:     AccountTypeOAuth,
+			Status:   StatusActive,
+			Credentials: map[string]any{
+				"access_token":  "at-existing",
+				"refresh_token": "rt-existing",
+				"base_url":      "https://api.openai.com",
+			},
+		},
+	}
+	svc := &adminServiceImpl{accountRepo: repo}
+
+	updated, err := svc.SetOpenAITeam401Retryable(context.Background(), accountID, true)
+
+	require.NoError(t, err)
+	require.NotNil(t, updated)
+	require.Equal(t, 0, repo.updateCalls, "dedicated switch must not use whole-account Update")
+	require.Equal(t, 1, repo.updateCredentialsFieldsCalls)
+	require.Equal(t, map[string]any{"openai_team_401_retryable": true}, repo.lastCredentialFieldPatch)
+	require.Equal(t, "at-existing", repo.account.Credentials["access_token"])
+	require.Equal(t, "rt-existing", repo.account.Credentials["refresh_token"])
+	require.Equal(t, true, repo.account.Credentials["openai_team_401_retryable"])
+}
+
+func TestSetOpenAITeam401Retryable_RejectsOtherAccountTypes(t *testing.T) {
+	t.Run("openai_apikey", func(t *testing.T) {
+		repo := &updateAccountCredsRepoStub{
+			account: &Account{ID: 206, Platform: PlatformOpenAI, Type: AccountTypeAPIKey},
+		}
+		svc := &adminServiceImpl{accountRepo: repo}
+
+		_, err := svc.SetOpenAITeam401Retryable(context.Background(), 206, true)
+
+		require.Error(t, err)
+		require.Equal(t, 0, repo.updateCredentialsFieldsCalls)
+	})
+
+	t.Run("non_openai_oauth", func(t *testing.T) {
+		repo := &updateAccountCredsRepoStub{
+			account: &Account{ID: 207, Platform: PlatformAntigravity, Type: AccountTypeOAuth},
+		}
+		svc := &adminServiceImpl{accountRepo: repo}
+
+		_, err := svc.SetOpenAITeam401Retryable(context.Background(), 207, true)
+
+		require.Error(t, err)
+		require.Equal(t, 0, repo.updateCredentialsFieldsCalls)
+	})
 }

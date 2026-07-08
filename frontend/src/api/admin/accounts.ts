@@ -207,6 +207,11 @@ export async function refreshCredentials(id: number): Promise<Account> {
   return data
 }
 
+export async function setOpenAITeam401Retryable(id: number, enabled: boolean): Promise<Account> {
+  const { data } = await apiClient.post<Account>(`/admin/accounts/${id}/openai-team-401-retryable`, { enabled })
+  return data
+}
+
 /**
  * Apply OAuth credentials after re-authorization.
  *
@@ -874,6 +879,7 @@ export const accountsAPI = {
   toggleStatus,
   testAccount,
   refreshCredentials,
+  setOpenAITeam401Retryable,
   applyOAuthCredentials,
   getStats,
   clearError,

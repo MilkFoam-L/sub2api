@@ -167,6 +167,25 @@ func (s *RateLimitService) CheckErrorPolicy(ctx context.Context, account *Accoun
 	return ErrorPolicyNone
 }
 
+func isOpenAITeam401RetryableError(account *Account, upstreamCode, upstreamMsg string, responseBody []byte) bool {
+	if !account.IsOpenAITeam401Retryable() {
+		return false
+	}
+	code := strings.ToLower(strings.TrimSpace(upstreamCode))
+	msg := strings.ToLower(strings.TrimSpace(upstreamMsg))
+	raw := strings.ToLower(string(responseBody))
+	if code == "no_matching_rule" || strings.Contains(msg, "no_matching_rule") || strings.Contains(raw, "no_matching_rule") {
+		return true
+	}
+	if strings.TrimSpace(account.GetCredential("refresh_token")) != "" {
+		return false
+	}
+	if strings.EqualFold(strings.TrimSpace(gjson.GetBytes(responseBody, "detail").String()), "Unauthorized") {
+		return true
+	}
+	return strings.Contains(msg, "unauthorized") || strings.Contains(raw, "unauthorized")
+}
+
 // HandleUpstreamError 处理上游错误响应，标记账号状态
 // 返回是否应该停止该账号的调度
 func (s *RateLimitService) HandleUpstreamError(ctx context.Context, account *Account, statusCode int, headers http.Header, responseBody []byte, requestedModel ...string) (shouldDisable bool) {
@@ -260,6 +279,11 @@ func (s *RateLimitService) HandleUpstreamError(ctx context.Context, account *Acc
 				msg = "Token revoked (401): " + upstreamMsg
 			}
 			s.handleAuthError(ctx, authAccount, msg)
+			shouldDisable = true
+			break
+		}
+		if isOpenAITeam401RetryableError(authAccount, openai401Code, upstreamMsg, responseBody) {
+			slog.Info("openai_team_401_retryable_failover", "account_id", authAccount.ID, "error_code", openai401Code)
 			shouldDisable = true
 			break
 		}

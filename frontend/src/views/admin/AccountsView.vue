@@ -398,7 +398,7 @@
     <AccountTestModal :show="showTest" :account="testingAcc" @close="closeTestModal" />
     <AccountStatsModal :show="showStats" :account="statsAcc" @close="closeStatsModal" />
     <ScheduledTestsPanel :show="showSchedulePanel" :account-id="scheduleAcc?.id ?? null" :model-options="scheduleModelOptions" @close="closeSchedulePanel" />
-    <AccountActionMenu :show="menu.show" :account="menu.acc" :position="menu.pos" @close="menu.show = false" @test="handleTest" @stats="handleViewStats" @schedule="handleSchedule" @reauth="handleReAuth" @refresh-token="handleRefresh" @recover-state="handleRecoverState" @recover-upstream-balance="handleRecoverUpstreamBalance" @reset-quota="handleResetQuota" @set-privacy="handleSetPrivacy" @create-spark-shadow="handleCreateSparkShadow" />
+    <AccountActionMenu :show="menu.show" :account="menu.acc" :position="menu.pos" @close="menu.show = false" @test="handleTest" @stats="handleViewStats" @schedule="handleSchedule" @reauth="handleReAuth" @refresh-token="handleRefresh" @recover-state="handleRecoverState" @recover-upstream-balance="handleRecoverUpstreamBalance" @reset-quota="handleResetQuota" @set-privacy="handleSetPrivacy" @create-spark-shadow="handleCreateSparkShadow" @toggle-openai-team-401-retryable="handleToggleOpenAITeam401Retryable" />
     <SyncFromCrsModal :show="showSync" @close="showSync = false" @synced="reload" />
     <ImportDataModal :show="showImportData" :groups="groups" @close="showImportData = false" @imported="handleDataImported" />
     <BulkEditAccountModal
@@ -1855,6 +1855,17 @@ const handleSetPrivacy = async (a: Account) => {
   } catch (error: any) {
     console.error('Failed to set privacy:', error)
     appStore.showError(error?.response?.data?.message || t('admin.accounts.privacyFailed'))
+  }
+}
+const handleToggleOpenAITeam401Retryable = async (a: Account, enabled: boolean) => {
+  try {
+    const updated = await adminAPI.accounts.setOpenAITeam401Retryable(a.id, enabled)
+    patchAccountInList(updated)
+    enterAutoRefreshSilentWindow()
+    appStore.showSuccess(t(enabled ? 'admin.accounts.openAITeam401RetryableEnabled' : 'admin.accounts.openAITeam401RetryableDisabled'))
+  } catch (error: any) {
+    console.error('Failed to update OpenAI Team 401 retryable switch:', error)
+    appStore.showError(error?.response?.data?.message || t('admin.accounts.openAITeam401RetryableFailed'))
   }
 }
 const onRevertFallback = async (a: Account) => {

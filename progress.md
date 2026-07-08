@@ -551,3 +551,31 @@
 ### Notes
 - `progress.md`：追加本轮 Docker 构建、推送、验证和回滚说明。
 - 回滚方式：部署端可将镜像 tag 回切到上一次已知可用版本；代码层面可回退到提交 `33668d7c` 之前的版本，或对本轮日志提交执行 `git revert`。
+
+## 2026-07-08 - Task: OpenAI Team OAuth 401team 可重试开关
+### What was done
+- 为 OpenAI OAuth 母账号新增“401team 可重试”显式开关，管理员可在账号管理页“更多”菜单手动开启或关闭。
+- 后端新增专用接口，只增量更新 `credentials.openai_team_401_retryable` 单个键，不通过全量账号更新覆盖脱敏后的 credentials。
+- OpenAI OAuth 账号在开关开启后，遇到 `no_matching_rule` 或“无 refresh_token + Unauthorized”这类特定 401 时，不再直接写入 error/冷却，而是进入现有 failover/换号流程。
+- 保持非 OpenAI、非 OAuth、影子账号、未开启开关账号和其他 401 的原有处理不变。
+
+### Testing
+- 通过：`GOCACHE="$PWD/.gocache" go test -tags unit ./internal/service -run 'TestRateLimitService_HandleUpstreamError_OpenAITeam401RetryableEntersFailoverOnly|TestRateLimitService_HandleUpstreamError_NonOAuth401|TestSetOpenAITeam401Retryable'`。
+- 通过：`GOCACHE="$PWD/.gocache" go test ./internal/handler/admin`。
+- 通过：`./node_modules/.bin/vitest run src/components/admin/account/__tests__/AccountActionMenu.spec.ts --reporter verbose`（在 `frontend` 目录执行）。
+- 通过：`./node_modules/.bin/vue-tsc --noEmit`（在 `frontend` 目录执行）。
+- 通过：`GOCACHE="$PWD/.gocache" go test ./internal/service -run 'TestRateLimitService_HandleUpstreamError_OpenAITeam401RetryableEntersFailoverOnly|TestSetOpenAITeam401Retryable'`，用于无 unit tag 编译触达。
+- 说明：`GOCACHE="$PWD/.gocache" go test -tags unit ./internal/service` 的全量 service 单测在既有 `TestOpenAISelectAccountWithLoadAwareness_HydratesSelectedAccountFromSchedulerSnapshot` 调度快照用例处 panic，堆栈落在 `openai_gateway_service.go:listSchedulableAccounts`，与本轮 401team 开关目标路径无直接关系；本轮新增和受影响目标测试已通过。
+- 说明：`npm --prefix frontend run typecheck` 在当前 Git Bash 环境只返回失败码且无诊断输出，已使用同一项目本地二进制 `./node_modules/.bin/vue-tsc --noEmit` 完成等价类型检查并通过。
+
+### Notes
+- `backend/internal/service/account.go`：新增 `openai_team_401_retryable` 凭据键常量和 OpenAI OAuth 开关读取 helper。
+- `backend/internal/service/ratelimit_service.go`：新增特定 Team 401 匹配逻辑，命中时返回 failover，不写入 error/冷却。
+- `backend/internal/service/admin_service.go`、`backend/internal/handler/admin/account_handler.go`、`backend/internal/server/routes/admin.go`：新增专用服务方法、管理员接口和路由。
+- `backend/internal/repository/account_repo.go`、`backend/internal/service/account_credentials_persistence.go`：新增 credentials JSONB 增量合并能力，避免全量覆盖凭据。
+- `frontend/src/components/admin/account/AccountActionMenu.vue`、`frontend/src/views/admin/AccountsView.vue`、`frontend/src/api/admin/accounts.ts`：新增菜单开关、页面处理和专用 API 调用。
+- `frontend/src/i18n/locales/zh.ts`、`frontend/src/i18n/locales/en.ts`：新增 401team 可重试相关文案。
+- `backend/internal/service/ratelimit_service_401_test.go`、`backend/internal/service/admin_service_credentials_merge_test.go`、`frontend/src/components/admin/account/__tests__/AccountActionMenu.spec.ts`：新增回归测试。
+- `backend/internal/handler/admin/admin_service_stub_test.go`、`backend/internal/service/admin_service_spark_shadow_test.go`：同步测试桩接口以恢复编译。
+- `docs/SCHEDULER_OPTIMIZATION_NOTES.md`、`progress.md`：同步记录本轮行为边界、验证结果和回滚方式。
+- 回滚方式：代码层执行 `git revert <feature_commit>`；未提交时可用 `git restore` 回退上述文件。运行时可先在账号“更多”菜单关闭“401team 可重试”，关闭后该标记为中性，不影响原 401 处理。

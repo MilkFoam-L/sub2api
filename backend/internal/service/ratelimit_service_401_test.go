@@ -217,6 +217,72 @@ func TestRateLimitService_HandleUpstreamError_OAuth401InvalidatorError(t *testin
 	require.Len(t, invalidator.accounts, 1)
 }
 
+func TestRateLimitService_HandleUpstreamError_OpenAITeam401RetryableEntersFailoverOnly(t *testing.T) {
+	t.Run("no_matching_rule", func(t *testing.T) {
+		repo := &rateLimitAccountRepoStub{}
+		invalidator := &tokenCacheInvalidatorRecorder{}
+		service := NewRateLimitService(repo, nil, &config.Config{}, nil, nil)
+		service.SetTokenCacheInvalidator(invalidator)
+		account := &Account{
+			ID:       2884,
+			Platform: PlatformOpenAI,
+			Type:     AccountTypeOAuth,
+			Credentials: map[string]any{
+				"access_token":              "team-at",
+				"openai_team_401_retryable": true,
+			},
+		}
+		body := []byte(`{"error":{"message":"Authentication failed (401): no_matching_rule","code":"no_matching_rule"}}`)
+
+		shouldDisable := service.HandleUpstreamError(context.Background(), account, 401, http.Header{}, body)
+
+		require.True(t, shouldDisable, "retryable Team 401 must bubble into existing failover flow")
+		require.Equal(t, 0, repo.setErrorCalls, "retryable Team 401 must not permanently disable the account")
+		require.Equal(t, 0, repo.tempCalls, "retryable Team 401 must not apply OAuth refresh cooldown")
+		require.Equal(t, 0, repo.updateCredentialsCalls)
+		require.Empty(t, invalidator.accounts, "no refresh token flow should not pretend this account can self-refresh")
+	})
+
+	t.Run("unauthorized_without_refresh_token", func(t *testing.T) {
+		repo := &rateLimitAccountRepoStub{}
+		service := NewRateLimitService(repo, nil, &config.Config{}, nil, nil)
+		account := &Account{
+			ID:       2885,
+			Platform: PlatformOpenAI,
+			Type:     AccountTypeOAuth,
+			Credentials: map[string]any{
+				"access_token":              "team-at",
+				"openai_team_401_retryable": true,
+			},
+		}
+
+		shouldDisable := service.HandleUpstreamError(context.Background(), account, 401, http.Header{}, []byte(`{"detail":"Unauthorized"}`))
+
+		require.True(t, shouldDisable)
+		require.Equal(t, 0, repo.setErrorCalls)
+		require.Equal(t, 0, repo.tempCalls)
+	})
+
+	t.Run("flag_disabled_keeps_existing_no_refresh_token_error", func(t *testing.T) {
+		repo := &rateLimitAccountRepoStub{}
+		service := NewRateLimitService(repo, nil, &config.Config{}, nil, nil)
+		account := &Account{
+			ID:       2886,
+			Platform: PlatformOpenAI,
+			Type:     AccountTypeOAuth,
+			Credentials: map[string]any{
+				"access_token": "at-only",
+			},
+		}
+
+		shouldDisable := service.HandleUpstreamError(context.Background(), account, 401, http.Header{}, []byte(`{"detail":"Unauthorized"}`))
+
+		require.True(t, shouldDisable)
+		require.Equal(t, 1, repo.setErrorCalls)
+		require.Equal(t, 0, repo.tempCalls)
+	})
+}
+
 func TestRateLimitService_HandleUpstreamError_NonOAuth401(t *testing.T) {
 	repo := &rateLimitAccountRepoStub{}
 	invalidator := &tokenCacheInvalidatorRecorder{}
@@ -226,6 +292,9 @@ func TestRateLimitService_HandleUpstreamError_NonOAuth401(t *testing.T) {
 		ID:       102,
 		Platform: PlatformOpenAI,
 		Type:     AccountTypeAPIKey,
+		Credentials: map[string]any{
+			"openai_team_401_retryable": true,
+		},
 	}
 
 	shouldDisable := service.HandleUpstreamError(context.Background(), account, 401, http.Header{}, []byte("unauthorized"))
