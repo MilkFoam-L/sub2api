@@ -579,3 +579,22 @@
 - `backend/internal/handler/admin/admin_service_stub_test.go`、`backend/internal/service/admin_service_spark_shadow_test.go`：同步测试桩接口以恢复编译。
 - `docs/SCHEDULER_OPTIMIZATION_NOTES.md`、`progress.md`：同步记录本轮行为边界、验证结果和回滚方式。
 - 回滚方式：代码层执行 `git revert <feature_commit>`；未提交时可用 `git restore` 回退上述文件。运行时可先在账号“更多”菜单关闭“401team 可重试”，关闭后该标记为中性，不影响原 401 处理。
+
+## 2026-07-08 - Task: 构建并推送 401team 开关腾讯云镜像
+### What was done
+- 将 401team 可重试开关代码提交并推送到 `origin/main`，提交为 `bed4513f Add OpenAI Team 401 retry switch`。
+- 基于提交 `bed4513f` 构建 Docker release 镜像，运行时版本为 `0.1.146`。
+- 推送腾讯云 CCR 镜像版本 tag：`ccr.ccs.tencentyun.com/apophis-chat/sub2api:0.1.146-bed4513f-20260708145750`。
+- 同步更新并推送 `ccr.ccs.tencentyun.com/apophis-chat/sub2api:latest`。
+
+### Testing
+- 代码推送完成：`main -> origin/main`。
+- Docker 构建通过：前端 `pnpm run build`、后端 Go release build、最终镜像构建均成功。
+- 腾讯云 CCR 推送完成：版本 tag 与 `latest` 均推送成功。
+- 远端 manifest digest 已返回一致：`sha256:ef5f774ee6fa13ff9634a3e5d490de3df738b5460d3ee58cf51a4cd2851049d9`。
+- 首次 Docker 构建在后端阶段达到工具 10 分钟超时；重试利用缓存后构建成功。
+- 构建过程仅保留 legacy builder 弃用提示、Browserslist 数据过旧、Vite dynamic import/chunk size 警告和 Node 子进程弃用提示，未阻断构建。
+
+### Notes
+- `progress.md`：追加本轮代码推送、Docker 构建、腾讯云推送、验证和回滚说明。
+- 回滚方式：部署端可将镜像 tag 回切到上一次已知可用版本；代码层面可对提交 `bed4513f` 及本轮日志提交执行 `git revert`，或切回上一个已部署镜像 tag。
