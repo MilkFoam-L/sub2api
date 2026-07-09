@@ -598,3 +598,25 @@
 ### Notes
 - `progress.md`：追加本轮代码推送、Docker 构建、腾讯云推送、验证和回滚说明。
 - 回滚方式：部署端可将镜像 tag 回切到上一次已知可用版本；代码层面可对提交 `bed4513f` 及本轮日志提交执行 `git revert`，或切回上一个已部署镜像 tag。
+
+## 2026-07-09 - Task: 合并上游 v0.1.147 并准备腾讯云镜像
+### What was done
+- 从 `https://github.com/Wei-Shaw/sub2api.git` 拉取并合并 tag `v0.1.147` 到当前 `main` 分支。
+- 解决上游大文件拆分带来的冲突，保留本分支 401team 可重试、账号批量删除、调度设置/日志、OpenAI images reasoning effort 等本地能力。
+- 将上游拆分后的语言包结构与 401team 菜单文案合并，旧 `frontend/src/i18n/locales/{zh,en}.ts` 切换为拆分模块。
+- 修正 ent runtime 合并索引错位，避免 `privacy_filter_enabled` 默认值读取到 `rpm_limit`。
+
+### Testing
+- 通过：`GOCACHE="$PWD/.gocache" GOSUMDB=sum.golang.google.cn GOPROXY=https://goproxy.cn,direct go test ./internal/service ./internal/repository -run TestDoesNotExist`。
+- 通过：`GOCACHE="$PWD/.gocache" GOSUMDB=sum.golang.google.cn GOPROXY=https://goproxy.cn,direct go test ./internal/handler/admin`。
+- 通过：`GOCACHE="$PWD/.gocache" GOSUMDB=sum.golang.google.cn GOPROXY=https://goproxy.cn,direct go test -tags unit ./internal/service -run 'TestRateLimitService_HandleUpstreamError_OpenAITeam401RetryableEntersFailoverOnly|TestRateLimitService_HandleUpstreamError_NonOAuth401|TestSetOpenAITeam401Retryable|TestGatewayLegacyFallbackUsesPreferredAccountAndRecordsLog|TestAdminService_BulkDeleteAccounts'`。
+- 通过：`./node_modules/.bin/vue-tsc --noEmit`（在 `frontend` 目录执行）。
+- 通过：`./node_modules/.bin/vitest run src/components/admin/account/__tests__/AccountActionMenu.spec.ts --reporter verbose`（在 `frontend` 目录执行）。
+- 通过：`git diff --check`。
+- 说明：上游 tag `v0.1.147` 的 `backend/cmd/server/VERSION` 仍为 `0.1.146`，本轮不擅自改版本文件。
+
+### Notes
+- `backend/internal/service/*`、`backend/internal/handler/admin/*`、`frontend/src/i18n/locales/**`：合并上游 v0.1.147 拆分和本分支定制能力。
+- `backend/ent/runtime/runtime.go`：修正合并后的 user field 索引错位。
+- `progress.md`：记录本轮合并、冲突处理、验证与回滚说明。
+- 回滚方式：代码层可对本轮 merge commit 执行 `git revert -m 1 <merge_commit>`；部署层可继续使用上一版镜像 `ccr.ccs.tencentyun.com/apophis-chat/sub2api:0.1.146-bed4513f-20260708145750` 或上一已知可用 tag。

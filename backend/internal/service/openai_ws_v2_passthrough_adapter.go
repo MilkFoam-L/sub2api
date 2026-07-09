@@ -413,12 +413,8 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 				if requestModel == "" {
 					requestModel = capturedSessionModel
 				}
-				updatedPayload, err := hooks.BeforeRequest(turnNo, payload, requestModel)
-				if err != nil {
+				if err := hooks.BeforeRequest(turnNo, payload, requestModel); err != nil {
 					return payload, nil, err
-				}
-				if updatedPayload != nil {
-					payload = updatedPayload
 				}
 			}
 			// 在评估策略前先刷新 capturedSessionModel：客户端可能通过
