@@ -620,3 +620,23 @@
 - `backend/ent/runtime/runtime.go`：修正合并后的 user field 索引错位。
 - `progress.md`：记录本轮合并、冲突处理、验证与回滚说明。
 - 回滚方式：代码层可对本轮 merge commit 执行 `git revert -m 1 <merge_commit>`；部署层可继续使用上一版镜像 `ccr.ccs.tencentyun.com/apophis-chat/sub2api:0.1.146-bed4513f-20260708145750` 或上一已知可用 tag。
+
+## 2026-07-09 - Task: 构建并推送 v0.1.147 合并版腾讯云镜像
+### What was done
+- 将上游 `v0.1.147` 合并结果推送到 `origin/main`：`b6667e13 Merge upstream v0.1.147 release`。
+- 修复 release build 触达的 WebSocket ingress hook 签名残留冲突并推送：`1a7937c6 fix(openai): restore websocket payload hook mutation`。
+- 使用临时 no-BuildKit Dockerfile 适配当前本机 Docker 环境缺少 buildx 的限制，构建完成后已删除临时文件且未提交。
+- 推送腾讯云 CCR 镜像版本 tag：`ccr.ccs.tencentyun.com/apophis-chat/sub2api:0.1.146-1a7937c6-20260709195307`。
+- 同步更新并推送 `ccr.ccs.tencentyun.com/apophis-chat/sub2api:latest`。
+
+### Testing
+- 通过：`GOCACHE="$PWD/.gocache" GOSUMDB=sum.golang.google.cn GOPROXY=https://goproxy.cn,direct go test ./internal/handler ./internal/service ./cmd/server -run TestDoesNotExist`。
+- 通过：`./node_modules/.bin/vue-tsc --noEmit`（在 `frontend` 目录执行）。
+- Docker 构建通过：前端 `pnpm run build`、后端 Go release build、最终 runtime 镜像构建均成功。
+- 腾讯云 CCR 推送完成：版本 tag 与 `latest` 均推送成功。
+- 远端 manifest digest 已返回一致：`sha256:d84d13da308b2157f2e761ea11e63a7497fd88ae773421d68cbf82be0032b82e`。
+
+### Notes
+- `backend/internal/service/openai_ws_forwarder.go`、`backend/internal/service/openai_ws_forwarder_ingress.go`、`backend/internal/service/openai_ws_v2_passthrough_adapter.go`：恢复 WS hook payload 替换能力以匹配 handler 隐私过滤链路。
+- `progress.md`：追加本轮镜像构建、腾讯云推送、验证与回滚说明。
+- 回滚方式：部署端可回切到上一版镜像 `ccr.ccs.tencentyun.com/apophis-chat/sub2api:0.1.146-bed4513f-20260708145750`；代码层可 revert `1a7937c6`，并对合并提交 `b6667e13` 执行 `git revert -m 1 b6667e13`。
