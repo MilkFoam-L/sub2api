@@ -627,13 +627,14 @@
 - 修复 release build 触达的 WebSocket ingress hook 签名残留冲突并推送：`1a7937c6 fix(openai): restore websocket payload hook mutation`。
 - 使用临时 no-BuildKit Dockerfile 适配当前本机 Docker 环境缺少 buildx 的限制，构建完成后已删除临时文件且未提交。
 - 推送腾讯云 CCR 镜像版本 tag：`ccr.ccs.tencentyun.com/apophis-chat/sub2api:0.1.146-1a7937c6-20260709195307`。
+- 按发布 tag 补打并推送 `ccr.ccs.tencentyun.com/apophis-chat/sub2api:v0.1.147`。
 - 同步更新并推送 `ccr.ccs.tencentyun.com/apophis-chat/sub2api:latest`。
 
 ### Testing
 - 通过：`GOCACHE="$PWD/.gocache" GOSUMDB=sum.golang.google.cn GOPROXY=https://goproxy.cn,direct go test ./internal/handler ./internal/service ./cmd/server -run TestDoesNotExist`。
 - 通过：`./node_modules/.bin/vue-tsc --noEmit`（在 `frontend` 目录执行）。
 - Docker 构建通过：前端 `pnpm run build`、后端 Go release build、最终 runtime 镜像构建均成功。
-- 腾讯云 CCR 推送完成：版本 tag 与 `latest` 均推送成功。
+- 腾讯云 CCR 推送完成：`v0.1.147`、构建版本 tag 与 `latest` 均推送成功。
 - 远端 manifest digest 已返回一致：`sha256:d84d13da308b2157f2e761ea11e63a7497fd88ae773421d68cbf82be0032b82e`。
 
 ### Notes
