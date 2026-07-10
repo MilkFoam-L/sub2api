@@ -822,3 +822,23 @@
 - `frontend/src/i18n/locales/{zh,en}/admin/resources.ts`：在现有 `admin.usage` 结构下补齐 Token 排行榜文案。
 - `frontend/src/i18n/__tests__/navigationFeatureLocales.spec.ts`：新增语言包关键键回归测试。
 - 回滚方式：使用 `git revert <本次提交>` 正常回退语言包和测试变更，禁止改写公共历史。
+
+## 2026-07-10 - Task: 备份并合并上游 v0.1.150
+
+### What was done
+- 在合并前创建并推送备份分支 `backup/main-before-v0.1.150-20260710-e15ae8cd`，保存本地 i18n 修复后的安全回滚点。
+- 从 `https://github.com/Wei-Shaw/sub2api.git` 获取并合并标签 `v0.1.150`，手工解决 3 个冲突文件。
+- 冲突解决保留了本地 `request_type` 数字兼容解析、OpenAI compact 非流式响应 stop 回调，同时合入上游 GPT-5.6 定价、缓存 token 解析与其他 v0.1.150 功能变更。
+
+### Testing
+- 通过：`go test ./internal/handler/admin ./internal/service ./internal/server`（使用 `.cache/go-build` 与 `.cache/go-mod` 本地忽略缓存）。
+- 通过：`go test ./...`（backend，全量包测试通过）。
+- 通过：`pnpm test:run`（153 files / 1027 tests passed）。
+- 通过：`pnpm typecheck`。
+- 通过：`pnpm lint:check`。
+- 通过：`pnpm build`，仅有既有 Browserslist 过期、Vite chunk 与动态/静态 import 警告。
+
+### Notes
+- 冲突文件：`backend/internal/handler/admin/dashboard_handler.go`、`backend/internal/service/openai_gateway_response_handling.go`、`backend/internal/service/pricing_service.go`。
+- `.cache/` 已在 `.gitignore` 中，用于本机 Go 测试缓存，不纳入提交。
+- 回滚方式：代码层优先使用 `git revert -m 1 <合并提交>` 回退上游合并；也可从远端备份分支 `backup/main-before-v0.1.150-20260710-e15ae8cd` 恢复，禁止强推。
