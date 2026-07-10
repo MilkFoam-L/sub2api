@@ -741,3 +741,24 @@
 - `backend/`、`frontend/`、`README*.md`、`assets/`：合并上游 v0.1.149 发布内容。
 - `progress.md`：追加本轮备份、合并、迁移、验证与回滚说明。
 - 回滚方式：代码层对本轮 merge commit 执行 `git revert -m 1 <merge_commit>`；也可从本地备份分支 `backup/pre-v0.1.149-20260710-c0aa6719` 恢复合并前状态。部署层在新镜像验证前继续使用上一已知可用镜像。
+
+## 2026-07-10 - Task: v0.1.149 Docker 本地构建与健康验证
+
+### What was done
+- 修复 Docker 构建上下文包含本地 Go 缓存的问题，在 `.dockerignore` 排除根目录和子目录的 `.gocache`，避免约 6.2GB 无关缓存进入上下文。
+- 按用户要求清理全部未使用 Docker 镜像、停止容器、网络和构建缓存，未执行全局 volume prune；Docker 报告实际回收 19.29GB。
+- 切换新网络环境后，从零构建 `sub2api:0.1.149-74b343b8-local`，镜像 ID 为 `sha256:ee73fbf3bb2e7b73363e1e5ef3a3b694800bdb8aa3f5c48197c80cdae0365a31`。
+- 使用隔离 PostgreSQL/Redis 完成自动初始化、迁移和应用健康验证；验证结束后清理测试容器、网络、依赖镜像和中间层，额外回收 1.104GB，最终仅保留 303MB 成品镜像。
+
+### Testing
+- 通过：无缓存 Docker 多阶段构建，前端 `pnpm run build`、后端 Go release build 和最终 Alpine 镜像均成功。
+- 通过：`docker run --rm sub2api:0.1.149-74b343b8-local --version`，输出版本 `0.1.149`、commit `74b343b8`。
+- 通过：镜像进程以 `uid=1000(sub2api)`、`gid=1000(sub2api)` 非 root 用户运行。
+- 通过：隔离容器健康验证，`/health` 返回 `{"status":"ok"}`，Docker health status 为 `healthy`。
+- 通过：清理后 `docker system df` 显示仅 1 个成品镜像、无容器、无构建缓存；3 个匿名卷总占用 0B，按“不删除数据卷”边界保留。
+
+### Notes
+- `.dockerignore`：新增 `.gocache/` 与 `**/.gocache/`，减少 Docker 上下文和 C 盘临时占用。
+- 本机构建未安装 buildx，使用仓库现有 `deploy/Dockerfile` 和 legacy builder；最终腾讯云发布前仍需按 Task 18 复核生产根 Dockerfile 的 PostgreSQL 客户端层或使用等价 no-BuildKit 构建方式。
+- `progress.md`：追加 Docker 清理、构建、健康验证和空间回收证据。
+- 回滚方式：代码层对本轮 `.dockerignore` 提交执行 `git revert <commit>`；本地镜像可执行 `docker image rm sub2api:0.1.149-74b343b8-local` 删除，部署仍保持上一稳定镜像不变。
