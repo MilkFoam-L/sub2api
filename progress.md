@@ -718,3 +718,26 @@
 - `docs/SCHEDULER_OPTIMIZATION_NOTES.md`：改为说明当前仍保留的普通调度能力、历史 migration 边界和 401 Team 功能。
 - `progress.md`：追加本轮删除、验证和回滚说明。
 - 回滚方式：提交后执行 `git revert <Task 4 commit>`；未提交时可按本轮 `git diff --name-status` 清单逐文件恢复。migration 159 未修改，无数据库回滚动作。
+
+## 2026-07-10 - Task: 合并上游 v0.1.149 并迁移本地修改
+
+### What was done
+- 在合并前创建本地备份分支 `backup/pre-v0.1.149-20260710-c0aa6719`，随后将上游 tag `v0.1.149` 非快进合并到当前 `main`。
+- 解决用量排行冲突，保留本地 `billing_mode`/账号成本筛选与排序，同时合入上游用户 Token 细分排序、用户角色、用量页重构和版本回滚等功能。
+- 补齐上游 Compact 非流式 keepalive 在当前拆分网关结构中的实现，确保心跳提交后错误响应不再触发账号 failover，并覆盖标准 OAuth 与透传路径。
+- 合并后再次扫描独立调度入口和多语言键，未恢复已删除的调度页面、路由、handler、repository 或 `nav.scheduling`/`admin.scheduling` 活动文案。
+
+### Testing
+- 通过：`GOCACHE="$HOME/.cache/go-build" go test ./...`，后端全量测试通过。
+- 通过：Compact keepalive 定向测试，覆盖启用、禁用、首个 tick 前错误及响应已提交后禁止 failover。
+- 通过：用户排行 `GroupIDFilter`/`SortBy` 定向测试。
+- 通过：`./node_modules/.bin/vitest run --reporter=dot --no-color --pool=forks`，151 个测试文件、955 个测试全部通过。
+- 通过：`./node_modules/.bin/vue-tsc --noEmit --pretty false --diagnostics`、`./node_modules/.bin/tsc --noEmit -p tsconfig.node.json`、`./node_modules/.bin/vite build`；仅保留既有 Browserslist、dynamic import 和 chunk size 警告。
+- 通过：`git diff --check`、未解决冲突检查及独立调度残留扫描。
+
+### Notes
+- `backend/internal/handler/admin/dashboard_handler.go`、`backend/internal/repository/usage_log_repo_trend.go`：合并本地计费维度与上游 Token 排行排序合同。
+- `backend/internal/service/openai_gateway_{service,forward,passthrough,response_handling}.go`：迁移 Compact 非流式 keepalive 生命周期、错误提交和停止等待逻辑。
+- `backend/`、`frontend/`、`README*.md`、`assets/`：合并上游 v0.1.149 发布内容。
+- `progress.md`：追加本轮备份、合并、迁移、验证与回滚说明。
+- 回滚方式：代码层对本轮 merge commit 执行 `git revert -m 1 <merge_commit>`；也可从本地备份分支 `backup/pre-v0.1.149-20260710-c0aa6719` 恢复合并前状态。部署层在新镜像验证前继续使用上一已知可用镜像。

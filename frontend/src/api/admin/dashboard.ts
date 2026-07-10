@@ -167,7 +167,17 @@ export interface UserBreakdownParams {
   endpoint?: string
   endpoint_type?: 'inbound' | 'upstream' | 'path'
   limit?: number
-  sort_by?: 'actual_cost' | 'tokens' | 'total_tokens' | 'requests' | 'cost' | 'account_cost'
+  // Sort column for the ranking (allowlisted server-side; falls back to actual_cost)
+  sort_by?:
+    | 'actual_cost'
+    | 'tokens'
+    | 'total_tokens'
+    | 'input_tokens'
+    | 'output_tokens'
+    | 'cache_tokens'
+    | 'requests'
+    | 'cost'
+    | 'account_cost'
   // Additional filter conditions
   user_id?: number
   api_key_id?: number
