@@ -842,3 +842,25 @@
 - 冲突文件：`backend/internal/handler/admin/dashboard_handler.go`、`backend/internal/service/openai_gateway_response_handling.go`、`backend/internal/service/pricing_service.go`。
 - `.cache/` 已在 `.gitignore` 中，用于本机 Go 测试缓存，不纳入提交。
 - 回滚方式：代码层优先使用 `git revert -m 1 <合并提交>` 回退上游合并；也可从远端备份分支 `backup/main-before-v0.1.150-20260710-e15ae8cd` 恢复，禁止强推。
+
+## 2026-07-10 - Task: 构建并推送 v0.1.150 腾讯云生产镜像
+
+### What was done
+- 以远端 `main` 合并提交 `2059b628` 为源码，构建并推送腾讯云 CCR 镜像。
+- 因本机 Docker 缺少 buildx，使用 `.cache/Dockerfile.no-buildkit` 临时副本构建；临时副本只移除 pnpm BuildKit cache mount，其余生产 Dockerfile 内容保持一致。
+- 推送可追溯标签：`ccr.ccs.tencentyun.com/apophis-chat/sub2api:0.1.150-2059b628-20260710075827`。
+- 同步推送：`ccr.ccs.tencentyun.com/apophis-chat/sub2api:v0.1.150` 与 `ccr.ccs.tencentyun.com/apophis-chat/sub2api:latest`。
+
+### Testing
+- 通过：Docker 多阶段构建；首次 `postgres:18-alpine` 拉取因 Docker Hub OAuth 网络超时失败，单独拉取后复用缓存完成最终镜像。
+- 通过：镜像版本 `Sub2API 0.1.150 (commit: 2059b628, built: 2026-07-10T07:58:27Z)`。
+- 通过：默认入口运行用户为 `uid=1000(sub2api)`，包含 `psql 18.4`、`pg_dump 18.4` 与 `/app/resources`。
+- 通过：隔离 PostgreSQL/Redis 安装验证，Docker health 为 `healthy`，`/health` 返回 `{"status":"ok"}`。
+- 通过：三个远端标签均为 `linux/amd64`，manifest digest 一致：`sha256:b65a42505e72d66fc4c3e30435006149520fbf7146ccb92251ff5876dd4dec6e`。
+- 发布前 `latest` 回滚参考：config digest `sha256:2b9046b777eda163c8ec0eb4770ef932621e67b53ddfd23aafe5d1862c5fc78e`。
+
+### Notes
+- 腾讯云镜像仓库：`ccr.ccs.tencentyun.com/apophis-chat/sub2api`，未输出或写入任何仓库凭据。
+- 上游 `v0.1.150` 标签合入后 `backend/cmd/server/VERSION` 仍为 `0.1.149`，本次 Docker build 显式传入 `VERSION=0.1.150`，镜像内版本已验证正确。
+- `.cache/Dockerfile.no-buildkit` 与 Go 测试缓存均为本地忽略临时产物，不纳入提交。
+- 回滚方式：部署端可回切到发布前 `latest` 参考镜像，或改用可追溯旧标签；代码层使用 `git revert` 正常回退，禁止强推。
