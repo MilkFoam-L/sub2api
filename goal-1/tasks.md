@@ -234,13 +234,23 @@
 
 ## Task 18：大型全面检查-debug循环（六）并推送腾讯云镜像
 
-- [ ] 状态：未完成
+- [x] 状态：已完成
 - 内容：先做发布前综合门禁，再按项目惯例构建、标记并推送腾讯云镜像；核验远端 digest/manifest，确保不泄露凭据。
 - 独立验证：代码远端、镜像标签和 digest 均可查询；部署回滚目标明确。
 - 做了什么：
+  - 核验本地/远端 `main=f5cfb1b1`、工作树干净、Docker/磁盘/腾讯云 CCR 可用，读取发布前 `latest` digest 作为回滚点。
+  - 使用生产根 Dockerfile 的等价 no-BuildKit 临时副本构建 release 镜像，仅移除 pnpm cache mount，保留 PostgreSQL 18 客户端、resources、release ldflags、非 root 用户和 healthcheck。
+  - 推送 `0.1.149-f5cfb1b1-20260710052405`、`v0.1.149` 和 `latest` 三个腾讯云标签。
+  - 发布后清理基础镜像、Redis/PostgreSQL 测试依赖、旧本地验证镜像和构建中间层，额外回收 1.171GB。
 - 验证结果：
-- 剩余风险：
-- 下一步：
+  - 生产镜像 ID/远端 digest：`sha256:1f6fc5ca31023e9d353848f593c79b7d749820247fb331a4ba92b82fcaa5e1a7`。
+  - 版本输出为 `Sub2API 0.1.149 (commit: f5cfb1b1, built: 2026-07-10T05:24:05Z)`；运行用户为 `uid=1000(sub2api)`。
+  - `psql`、`pg_dump` 均为 PostgreSQL `18.4`，`/app/resources` 存在。
+  - 隔离 PostgreSQL/Redis 初始化、迁移和健康测试通过，`/health` 返回 `{"status":"ok"}`，Docker health status 为 `healthy`。
+  - 三个远端 manifest 均为 `linux/amd64` 且 digest 完全一致；发布前回滚 digest 为 `sha256:d84d13da308b2157f2e761ea11e63a7497fd88ae773421d68cbf82be0032b82e`。
+  - 清理后本地仅保留 166MB 可追溯成品镜像，无容器、无构建缓存，C 盘可用约 95GB。
+- 剩余风险：本机 legacy builder 已弃用但本次构建成功；后续建议安装 buildx 恢复根 Dockerfile 原生缓存路径。仅发布 `linux/amd64`，与当前仓库历史腾讯云发布平台一致。
+- 下一步：Task 19，执行最终最大 Review，复核代码、远端、镜像、回滚和文档证据后标记 Goal 完成。
 
 ## Task 19：最终最大 Review、修缮与 Goal 完成
 

@@ -779,3 +779,26 @@
 ### Notes
 - `progress.md`、`goal-1/tasks.md`：记录代码推送、远端 SHA、剩余风险和下一步镜像发布任务。
 - 回滚方式：如远端代码需要撤回，创建正常 `git revert` 提交并推送；合并整体可执行 `git revert -m 1 88e11471`，合并前代码可从远端备份分支恢复，禁止改写公共历史。
+
+## 2026-07-10 - Task: 构建并推送 v0.1.149 腾讯云生产镜像
+
+### What was done
+- 以远端 `main` 提交 `f5cfb1b1` 为源码，使用生产根 Dockerfile 的等价 no-BuildKit 临时副本构建 release 镜像；临时副本仅移除 pnpm 缓存挂载语法，完整保留 PostgreSQL 18 客户端、resources、release ldflags、非 root 用户和健康检查。
+- 推送腾讯云 CCR 可追溯标签：`ccr.ccs.tencentyun.com/apophis-chat/sub2api:0.1.149-f5cfb1b1-20260710052405`。
+- 同步推送 `ccr.ccs.tencentyun.com/apophis-chat/sub2api:v0.1.149` 与 `ccr.ccs.tencentyun.com/apophis-chat/sub2api:latest`。
+- 发布后清理基础镜像、测试依赖和中间层，额外回收 1.171GB；本地仅保留可追溯成品镜像。
+
+### Testing
+- 通过：生产多阶段构建，前端 `pnpm run build`、后端 Go release build、PostgreSQL 客户端层和最终运行层均成功；首次 PostgreSQL manifest TLS 超时后单独拉取并复用缓存完成。
+- 通过：镜像版本 `Sub2API 0.1.149 (commit: f5cfb1b1, built: 2026-07-10T05:24:05Z)`。
+- 通过：镜像使用 `uid=1000(sub2api)` 非 root 用户，包含 `psql 18.4`、`pg_dump 18.4` 和 `/app/resources`。
+- 通过：隔离 PostgreSQL/Redis 自动初始化、迁移和健康检查，`/health` 返回 `{"status":"ok"}`，Docker health status 为 `healthy`。
+- 通过：三个远端 manifest 均为 `linux/amd64`，digest 一致：`sha256:1f6fc5ca31023e9d353848f593c79b7d749820247fb331a4ba92b82fcaa5e1a7`。
+- 发布前 `latest` 回滚摘要：`sha256:d84d13da308b2157f2e761ea11e63a7497fd88ae773421d68cbf82be0032b82e`。
+- 清理后本地仅保留一个 166MB 成品镜像、无容器、无构建缓存；C 盘可用约 95GB。
+
+### Notes
+- 腾讯云镜像仓库：`ccr.ccs.tencentyun.com/apophis-chat/sub2api`，未输出或写入任何仓库凭据。
+- 本机构建未安装 buildx，临时 Dockerfile 位于系统 Temp，不在 Git 工作树中；仓库生产 `Dockerfile` 未被修改。
+- `progress.md`、`goal-1/tasks.md`：记录镜像标签、远端摘要、健康验证和回滚目标。
+- 回滚方式：部署端可回切到发布前 digest `sha256:d84d13da308b2157f2e761ea11e63a7497fd88ae773421d68cbf82be0032b82e`；代码层可使用远端备份分支或正常 `git revert`，禁止强推。
