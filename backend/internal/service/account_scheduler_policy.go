@@ -35,21 +35,9 @@ func defaultGatewaySchedulingConfig() config.GatewaySchedulingConfig {
 			RateMultiplier: 0.6,
 			QuotaRisk:      0.3,
 		},
-		PreferredAccountByGroupID: map[int64]int64{},
-		LatencyBaselineMS:         15000,
-		QuotaRiskThreshold:        0.2,
-		MaxScorePenalty:           5,
-		UpstreamRate: config.GatewaySchedulingUpstreamRateConfig{
-			Enabled:         false,
-			StaleTTLSeconds: 600,
-			RateWeight:      0.6,
-			HealthWeight:    0.4,
-			MinSuccessRate:  0.8,
-		},
-		Credential: config.GatewaySchedulingCredentialConfig{
-			Strategy:        config.GatewaySchedulingCredentialStrategyBalanced,
-			FallbackEnabled: true,
-		},
+		LatencyBaselineMS:      15000,
+		QuotaRiskThreshold:     0.2,
+		MaxScorePenalty:        5,
 		StickySessionMode:      config.GatewayStickySessionModeSoft,
 		StickyEscapeScoreRatio: 1.25,
 		StickyEscapeLoadRate:   75,
@@ -62,13 +50,6 @@ func normalizeGatewaySchedulingConfig(cfg config.GatewaySchedulingConfig) config
 	cfg.StickySessionMode = strings.ToLower(strings.TrimSpace(cfg.StickySessionMode))
 	if cfg.Algorithm == "" {
 		cfg.Algorithm = config.GatewaySchedulingAlgorithmWeightedP2C
-	}
-	cfg.Credential.Strategy = strings.ToLower(strings.TrimSpace(cfg.Credential.Strategy))
-	if cfg.Credential.Strategy == "" {
-		cfg.Credential.Strategy = config.GatewaySchedulingCredentialStrategyBalanced
-	}
-	if cfg.PreferredAccountByGroupID == nil {
-		cfg.PreferredAccountByGroupID = map[int64]int64{}
 	}
 	if cfg.P2CChoiceCount <= 0 {
 		cfg.P2CChoiceCount = 2
@@ -103,18 +84,6 @@ func normalizeGatewaySchedulingConfig(cfg config.GatewaySchedulingConfig) config
 	}
 	if cfg.SlowStart.Penalty == 0 {
 		cfg.SlowStart.Penalty = 1
-	}
-	if cfg.UpstreamRate.StaleTTLSeconds <= 0 {
-		cfg.UpstreamRate.StaleTTLSeconds = 600
-	}
-	if cfg.UpstreamRate.RateWeight == 0 {
-		cfg.UpstreamRate.RateWeight = 0.6
-	}
-	if cfg.UpstreamRate.HealthWeight == 0 {
-		cfg.UpstreamRate.HealthWeight = 0.4
-	}
-	if cfg.UpstreamRate.MinSuccessRate == 0 {
-		cfg.UpstreamRate.MinSuccessRate = 0.8
 	}
 	return cfg
 }
@@ -165,7 +134,6 @@ func schedulerAccountCost(item accountWithLoad, selectionDebt int, cfg config.Ga
 	cost += schedulerSoftPenalty(item.runtimeStatsPenalty(weights, cfg))
 	cost += schedulerSoftPenalty(schedulerRateMultiplierPenalty(item.account, weights.RateMultiplier))
 	cost += schedulerSoftPenalty(schedulerQuotaRiskPenalty(item.account, weights.QuotaRisk, cfg.QuotaRiskThreshold))
-	cost += schedulerSoftPenalty(schedulerUpstreamRatePenalty(item.upstreamRateSignal, cfg))
 	if math.IsNaN(cost) || math.IsInf(cost, 0) || cost < 0 {
 		return math.MaxFloat64
 	}
@@ -217,21 +185,6 @@ func schedulerQuotaRiskPenalty(account *Account, weight float64, threshold float
 	return risk * weight
 }
 
-func schedulerUpstreamRatePenalty(signal *UpstreamRateSignalSnapshot, cfg config.GatewaySchedulingConfig) float64 {
-	cfg = normalizeGatewaySchedulingConfig(cfg)
-	if !cfg.UpstreamRate.Enabled || signal == nil || signal.Stale {
-		return 0
-	}
-	penalty := 0.0
-	if cfg.UpstreamRate.RateWeight > 0 && signal.EffectiveRateMultiplier > 1 {
-		penalty += (signal.EffectiveRateMultiplier - 1) * cfg.UpstreamRate.RateWeight
-	}
-	if cfg.UpstreamRate.HealthWeight > 0 && cfg.UpstreamRate.MinSuccessRate > 0 && signal.SuccessRate < cfg.UpstreamRate.MinSuccessRate {
-		penalty += (cfg.UpstreamRate.MinSuccessRate - signal.SuccessRate) * cfg.UpstreamRate.HealthWeight
-	}
-	return schedulerCapPenalty(penalty, cfg.MaxScorePenalty)
-}
-
 func schedulerQuotaRiskRatio(account *Account, threshold float64) float64 {
 	if account == nil {
 		return 0
@@ -276,81 +229,13 @@ func schedulerCapPenalty(penalty float64, maxPenalty float64) float64 {
 	return penalty
 }
 
-func schedulingConfigForGroup(cfg config.GatewaySchedulingConfig, groupID int64) config.GatewaySchedulingConfig {
-	cfg = normalizeGatewaySchedulingConfig(cfg)
-	if accountID, ok := cfg.PreferredAccountByGroupID[groupID]; ok {
-		cfg.PreferredAccountID = accountID
-	} else if len(cfg.PreferredAccountByGroupID) > 0 {
-		cfg.PreferredAccountID = 0
-	}
-	return cfg
-}
-
-func buildCredentialAwareSelectionOrder(accounts []accountWithLoad, selectionDebts map[int64]int, preferOAuth bool, cfg config.GatewaySchedulingConfig) []accountWithLoad {
-	if len(accounts) == 0 {
-		return nil
-	}
-	cfg = normalizeGatewaySchedulingConfig(cfg)
-	primaryType := credentialPrimaryAccountType(cfg.Credential.Strategy)
-	if primaryType == "" {
-		return buildWeightedP2CSelectionOrder(accounts, selectionDebts, preferOAuth, cfg)
-	}
-	primary, fallback := partitionByCredentialType(accounts, primaryType)
-	order := buildWeightedP2CSelectionOrder(primary, selectionDebts, preferOAuth, cfg)
-	if cfg.Credential.FallbackEnabled {
-		order = append(order, buildWeightedP2CSelectionOrder(fallback, selectionDebts, preferOAuth, cfg)...)
-	}
-	return order
-}
-
-func buildCredentialAwareLegacyLRUSelectionOrder(accounts []accountWithLoad, preferOAuth bool, cfg config.GatewaySchedulingConfig) []accountWithLoad {
-	if len(accounts) == 0 {
-		return nil
-	}
-	cfg = normalizeGatewaySchedulingConfig(cfg)
-	primaryType := credentialPrimaryAccountType(cfg.Credential.Strategy)
-	if primaryType == "" {
-		return buildLegacyLRUSelectionOrder(accounts, preferOAuth, cfg.PreferredAccountID)
-	}
-	primary, fallback := partitionByCredentialType(accounts, primaryType)
-	order := buildLegacyLRUSelectionOrder(primary, preferOAuth, cfg.PreferredAccountID)
-	if cfg.Credential.FallbackEnabled {
-		order = append(order, buildLegacyLRUSelectionOrder(fallback, preferOAuth, cfg.PreferredAccountID)...)
-	}
-	return order
-}
-
-func credentialPrimaryAccountType(strategy string) string {
-	switch strategy {
-	case config.GatewaySchedulingCredentialStrategyOAuthFirst:
-		return AccountTypeOAuth
-	case config.GatewaySchedulingCredentialStrategyAPIKeyFirst:
-		return AccountTypeAPIKey
-	default:
-		return ""
-	}
-}
-
-func partitionByCredentialType(accounts []accountWithLoad, primaryType string) ([]accountWithLoad, []accountWithLoad) {
-	primary := make([]accountWithLoad, 0, len(accounts))
-	fallback := make([]accountWithLoad, 0, len(accounts))
-	for _, item := range accounts {
-		if item.account != nil && item.account.Type == primaryType {
-			primary = append(primary, item)
-			continue
-		}
-		fallback = append(fallback, item)
-	}
-	return primary, fallback
-}
-
 func buildWeightedP2CSelectionOrder(accounts []accountWithLoad, selectionDebts map[int64]int, preferOAuth bool, cfg config.GatewaySchedulingConfig) []accountWithLoad {
 	if len(accounts) == 0 {
 		return nil
 	}
 	cfg = normalizeGatewaySchedulingConfig(cfg)
 	if cfg.Algorithm == config.GatewaySchedulingAlgorithmLegacyLRU {
-		return buildLegacyLRUSelectionOrder(accounts, preferOAuth, cfg.PreferredAccountID)
+		return buildLegacyLRUSelectionOrder(accounts, preferOAuth)
 	}
 
 	pool := append([]accountWithLoad(nil), accounts...)
@@ -369,32 +254,18 @@ func buildWeightedP2CSelectionOrder(accounts []accountWithLoad, selectionDebts m
 				layerIdxs = append(layerIdxs, idx)
 			}
 		}
-		selectedPoolIdx := selectPreferredAccountIndex(pool, layerIdxs, cfg.PreferredAccountID)
-		if selectedPoolIdx < 0 {
-			selectedPoolIdx = selectWeightedP2CIndex(pool, layerIdxs, selectionDebts, preferOAuth, cfg)
-		}
+		selectedPoolIdx := selectWeightedP2CIndex(pool, layerIdxs, selectionDebts, preferOAuth, cfg)
 		order = append(order, pool[selectedPoolIdx])
 		pool = append(pool[:selectedPoolIdx], pool[selectedPoolIdx+1:]...)
 	}
 	return order
 }
 
-func buildLegacyLRUSelectionOrder(accounts []accountWithLoad, preferOAuth bool, preferredAccountID int64) []accountWithLoad {
+func buildLegacyLRUSelectionOrder(accounts []accountWithLoad, preferOAuth bool) []accountWithLoad {
 	pool := append([]accountWithLoad(nil), accounts...)
 	order := make([]accountWithLoad, 0, len(pool))
 	for len(pool) > 0 {
 		candidates := filterByMinPriority(pool)
-		if preferred := preferredAccountFromLayer(candidates, preferredAccountID); preferred != nil {
-			selectedID := preferred.account.ID
-			for i, item := range pool {
-				if item.account.ID == selectedID {
-					order = append(order, item)
-					pool = append(pool[:i], pool[i+1:]...)
-					break
-				}
-			}
-			continue
-		}
 		candidates = filterByMinLoadRate(candidates)
 		selected := selectByLRU(candidates, preferOAuth)
 		if selected == nil || selected.account == nil {
@@ -410,30 +281,6 @@ func buildLegacyLRUSelectionOrder(accounts []accountWithLoad, preferOAuth bool, 
 		}
 	}
 	return order
-}
-
-func preferredAccountFromLayer(candidates []accountWithLoad, preferredAccountID int64) *accountWithLoad {
-	if preferredAccountID <= 0 {
-		return nil
-	}
-	for i := range candidates {
-		if candidates[i].account != nil && candidates[i].account.ID == preferredAccountID {
-			return &candidates[i]
-		}
-	}
-	return nil
-}
-
-func selectPreferredAccountIndex(pool []accountWithLoad, candidateIdxs []int, preferredAccountID int64) int {
-	if preferredAccountID <= 0 {
-		return -1
-	}
-	for _, idx := range candidateIdxs {
-		if idx >= 0 && idx < len(pool) && pool[idx].account != nil && pool[idx].account.ID == preferredAccountID {
-			return idx
-		}
-	}
-	return -1
 }
 
 func selectWeightedP2CIndex(pool []accountWithLoad, candidateIdxs []int, debts map[int64]int, preferOAuth bool, cfg config.GatewaySchedulingConfig) int {

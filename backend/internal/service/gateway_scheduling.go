@@ -747,7 +747,7 @@ func (s *GatewayService) tryAcquireByLegacyOrder(ctx context.Context, candidates
 		}
 		items = append(items, accountWithLoad{account: acc, loadInfo: &AccountLoadInfo{AccountID: acc.ID}})
 	}
-	orderedItems := buildCredentialAwareLegacyLRUSelectionOrder(items, preferOAuth, cfg)
+	orderedItems := buildLegacyLRUSelectionOrder(items, preferOAuth)
 
 	for _, item := range orderedItems {
 		acc := item.account

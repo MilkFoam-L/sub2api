@@ -676,3 +676,24 @@
 - `backend/internal/repository/wire.go`、`backend/internal/service/wire.go`、`backend/cmd/server/wire_gen.go`：断开 repository/service/runner 启动链。
 - `backend/internal/service/{gateway_scheduling.go,scheduled_test_runner_service.go,setting_service.go}`：停止 DB 调度配置热更新并移除无效依赖。
 - 回滚方式：提交后执行 `git revert <Task 2 commit>`；不会触碰现有 stash、历史迁移或用户尚未提交的后续清理文件。
+
+## 2026-07-10 - Task: 全面审查调度清理边界并恢复生产编译
+
+### What was done
+- 全面复核独立调度/上游倍率的路由、DI、启动链、热路径与历史迁移，并核对普通 gateway、OpenAI 高级调度、401 Team 和分组隔离的保留证据。
+- 恢复 legacy LRU 双参数行为，删除优先账号 helper，并将普通 gateway fallback 从已删除的 credential-aware helper 切回 legacy LRU。
+- 删除已无入口且导致生产编译失败的 scheduling handler 和 gateway DB scheduling settings 实现。
+- 确认 migration 159 保持共享历史不变，不执行破坏性 DROP 或 checksum 修改。
+
+### Testing
+- 通过：`go build ./internal/service ./internal/handler ./internal/server/routes ./cmd/server`。
+- 部分通过：`go test ./internal/service ./internal/handler ./internal/server/routes ./cmd/server -run TestDoesNotExist -count=1`；handler、routes、cmd/server 通过，service 仅被 Task 4 待删旧测试符号阻断。
+- 通过：`git diff --check`。
+- 静态核对通过：普通调度基础结构、OpenAI advanced scheduler、401 Team retryable、`allow_ungrouped_key_scheduling`、`upstream_rate_limited` 均保留。
+
+### Notes
+- `backend/internal/service/account_scheduler_policy.go`：移除 preferred/credential/upstream-rate 策略残留并恢复 legacy LRU 编译一致性。
+- `backend/internal/service/gateway_scheduling.go`：legacy fallback 恢复调用普通 LRU helper。
+- `backend/internal/handler/admin/scheduling_handler.go`、`backend/internal/service/gateway_scheduling_settings.go`：删除孤立实现。
+- `backend/migrations/159_add_upstream_rate_sources.sql`：只读审查，保留历史文件；闲置表后续仅可通过有授权的新前向 migration 处置。
+- 回滚方式：提交后执行 `git revert <Task 3 commit>`；不会修改 migration 159 或现有数据库数据。

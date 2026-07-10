@@ -53,13 +53,29 @@
 
 ## Task 3：大型全面检查-debug循环（一）
 
-- [ ] 状态：未完成
+- [x] 状态：已完成
 - 内容：全面复核 Task 1-2 的需求边界、后端调用链、编译错误、数据/安全影响和回滚点，发现问题立即修复并重跑。
 - 独立验证：相关后端包至少完成编译级验证；检查结果写入本文件。
 - 做了什么：
+  - 并行完成两路只读审查：一路追踪 scheduling/upstream-rate 路由、DI、启动链、热路径和 migration 159；一路核对普通 gateway 调度、OpenAI 高级调度、401 Team、分组隔离和 WebSocket 错误分类的保留证据。
+  - 修复 `buildLegacyLRUSelectionOrder` 半清理签名：恢复双参数 legacy LRU，并删除优先账号选择 helper，保留 priority → load → LRU 原有行为。
+  - 将普通 gateway legacy fallback 从已删除的 credential-aware helper 恢复为 `buildLegacyLRUSelectionOrder`。
+  - 删除已无活动入口且直接导致生产编译失败的 `scheduling_handler.go` 和 `gateway_scheduling_settings.go`；其 DTO、键和专属测试留待 Task 4 成组删除。
+  - 确认 `GatewayService.settingService` 仍服务于 OAuth metadata、beta policy、请求转发、cache rewrite 等普通能力，禁止随调度 DB override 一并删除。
+  - 确认定时探测 runner 的计划仓储、测试执行、限流恢复、账号暂停、慢启动标记和配置依赖均完整。
+  - 数据安全结论：保留共享历史中的 `159_add_upstream_rate_sources.sql`，不修改 checksum、不新增未经授权的 DROP；应用层停止使用，避免新旧数据库迁移状态分叉和加密 token 数据销毁。
 - 验证结果：
+  - `go build ./internal/service ./internal/handler ./internal/server/routes ./cmd/server`：通过，后端生产代码完成编译级验证。
+  - `go test ./internal/service ./internal/handler ./internal/server/routes ./cmd/server -run TestDoesNotExist -count=1`：handler、routes、cmd/server 通过；service 测试包仅因 Task 4 待删旧测试引用 `schedulingConfigForGroup`、`buildCredentialAwareSelectionOrder`、`Get/UpdateGatewaySchedulingConfig` 而失败。
+  - `git diff --check`：通过。
+  - 保留证据已核对：普通配置 `GatewaySchedulingConfig`、weighted P2C/legacy LRU、sticky、load/queue/debt、ActiveProbe、SlowStart、账号自身 `BillingRateMultiplier`；全部 `openai_advanced_scheduler_*`；全部 `openai_team_401_retryable` API/UI/i18n/tests；`allow_ungrouped_key_scheduling`；精确业务错误字符串 `upstream_rate_limited`。
+  - migration runner 使用完整文件名作为 `schema_migrations.filename` 主键并校验 checksum；直接删除/修改已发布 migration 会造成 schema 分叉或 checksum mismatch，因此保持历史文件不变。
 - 剩余风险：
-- 下一步：
+  - service 测试包尚未编译通过，Task 4 必须删除/改写只验证 preferred account、credential strategy、上游倍率信号和 DB scheduling override 的测试。
+  - `scheduling_dto_helpers.go`、DTO、settings keys、调度日志热路径及全部 upstream-rate 文件仍是孤立残留，必须成组删除。
+  - 普通 gateway 当前主 Layer 2 仍沿用历史的 priority → load → LRU；weighted P2C helper 主要由 OpenAI scheduler 使用。该语义在本轮清理前已存在，不属于本轮回归，禁止为“顺手修复”扩大范围。
+  - migration 159 与 `159_batch_image_foundation.sql` 数字前缀重复，但 runner 按完整文件名排序与登记，当前不会主键冲突；后续新 migration 必须使用唯一新编号。
+- 下一步：执行 Task 4，成组删除后端账号分配、凭据池、上游倍率、调度日志、DB settings DTO/键/测试残留，并把 service 测试包恢复到可编译状态。
 
 ## Task 4：删除后端账号分配、凭据池和上游倍率实现残留
 
