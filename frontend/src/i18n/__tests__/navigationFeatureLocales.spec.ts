@@ -36,6 +36,10 @@ const requiredKeys = [
   'admin.usage.tokenLeaderboardTokens',
   'admin.usage.tokenLeaderboardRequests',
   'admin.usage.tokenLeaderboardCost',
+  'admin.accounts.bulkDeleteFilteredButton',
+  'admin.accounts.bulkDeleteFilteredTitle',
+  'admin.accounts.bulkDeleteFilteredConfirm',
+  'admin.accounts.bulkDeleteFilteredEmpty',
 ] as const
 
 function resolveLocaleKey(locale: unknown, key: string): unknown {

@@ -864,3 +864,19 @@
 - 上游 `v0.1.150` 标签合入后 `backend/cmd/server/VERSION` 仍为 `0.1.149`，本次 Docker build 显式传入 `VERSION=0.1.150`，镜像内版本已验证正确。
 - `.cache/Dockerfile.no-buildkit` 与 Go 测试缓存均为本地忽略临时产物，不纳入提交。
 - 回滚方式：部署端可回切到发布前 `latest` 参考镜像，或改用可追溯旧标签；代码层使用 `git revert` 正常回退，禁止强推。
+
+## 2026-07-10 - Task: 修复账号筛选批量删除文案未格式化
+
+### What was done
+- 补齐账号列表“删除筛选结果”流程缺失的中英文 i18n 文案，避免界面直接显示 `admin.accounts.bulkDeleteFilteredTitle`、`admin.accounts.bulkDeleteFilteredButton` 等原始 key。
+- 同步补齐筛选删除确认提示和空结果提示，并将相关 key 纳入语言包可见文本回归测试。
+
+### Testing
+- 通过：`pnpm test:run src/i18n/__tests__/navigationFeatureLocales.spec.ts src/views/admin/__tests__/AccountsView.bulkEdit.spec.ts`（2 files / 78 tests passed）。
+- `pnpm typecheck` 未通过，错误来自本轮开始前已有改动 `frontend/src/components/layout/AppHeader.vue`：模板引用的 `formatHeaderMoney`、`availableBalance`、`frozenBalance`、`balanceFrozenText` 未定义；本轮未修改该文件。
+
+### Notes
+- `frontend/src/i18n/locales/zh/admin/accounts.ts`：新增筛选批量删除的中文按钮、标题、确认和空结果文案。
+- `frontend/src/i18n/locales/en/admin/accounts.ts`：新增对应英文文案。
+- `frontend/src/i18n/__tests__/navigationFeatureLocales.spec.ts`：新增四个筛选批量删除 key 的存在性与非空校验。
+- 回滚方式：还原上述三个文件的本轮变更，并删除 `progress.md` 本节即可。
