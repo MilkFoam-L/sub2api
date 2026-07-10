@@ -762,3 +762,20 @@
 - 本机构建未安装 buildx，使用仓库现有 `deploy/Dockerfile` 和 legacy builder；最终腾讯云发布前仍需按 Task 18 复核生产根 Dockerfile 的 PostgreSQL 客户端层或使用等价 no-BuildKit 构建方式。
 - `progress.md`：追加 Docker 清理、构建、健康验证和空间回收证据。
 - 回滚方式：代码层对本轮 `.dockerignore` 提交执行 `git revert <commit>`；本地镜像可执行 `docker image rm sub2api:0.1.149-74b343b8-local` 删除，部署仍保持上一稳定镜像不变。
+
+## 2026-07-10 - Task: 推送 v0.1.149 合并代码与备份分支
+
+### What was done
+- 将合并前备份分支 `backup/pre-v0.1.149-20260710-c0aa6719` 正常推送到 `origin`，保留清理提交 `c0aa6719` 的远端恢复点。
+- 将包含独立调度扩展删除、上游 v0.1.149 合并、Compact keepalive 迁移、Docker 上下文修复和本地验证记录的 `main` 正常推送到 `origin`。
+- 全程未使用 force push、rebase、reset 或覆盖 checkout。
+
+### Testing
+- 通过：`git ls-remote --heads origin main backup/pre-v0.1.149-20260710-c0aa6719`。
+- 远端 `main` 首次推送后指向 `805ff424a25676983ea19d74305a07426374bd28`。
+- 远端备份分支指向 `c0aa6719ea07e4e5e38ed90d5801d4bce8994971`，与本地合并前备份一致。
+- 通过：推送后 `git status --short --branch` 显示本地 `main` 与 `origin/main` 同步，工作树干净。
+
+### Notes
+- `progress.md`、`goal-1/tasks.md`：记录代码推送、远端 SHA、剩余风险和下一步镜像发布任务。
+- 回滚方式：如远端代码需要撤回，创建正常 `git revert` 提交并推送；合并整体可执行 `git revert -m 1 88e11471`，合并前代码可从远端备份分支恢复，禁止改写公共历史。
