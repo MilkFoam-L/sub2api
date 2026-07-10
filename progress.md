@@ -880,3 +880,22 @@
 - `frontend/src/i18n/locales/en/admin/accounts.ts`：新增对应英文文案。
 - `frontend/src/i18n/__tests__/navigationFeatureLocales.spec.ts`：新增四个筛选批量删除 key 的存在性与非空校验。
 - 回滚方式：还原上述三个文件的本轮变更，并删除 `progress.md` 本节即可。
+
+## 2026-07-10 - Task: 备份并合并上游 v0.1.151
+
+### What was done
+- 合并前复核 `AppHeader.vue` 与 `AppSidebar.vue` 均不存在相对 `HEAD` 的未提交差异；本地 `main` 与 `origin/main` 当时同步。
+- 创建并推送保护分支 `backup/main-before-v0.1.151-20260710-cfab0bb3`，固定合并前提交 `cfab0bb3`。
+- 通过临时 fetch ref 获取上游 `v0.1.151`，并以本地 merge commit `be070cd1` 合入 `main`；合并无冲突，未推送 `main`。
+- 合入 OpenAI Fast/Flex 用户级策略、Codex identity pairing、GPT-5.6 计费与用量修复、setup-token 自动刷新、Grok reasoning effort 与 Codex image_gen 修复等上游发布内容。
+
+### Testing
+- 通过：`GOCACHE="C:/Users/MilkFoam/Desktop/AI/sub2api/.gocache" go test ./internal/pkg/openai ./internal/pkg/apicompat ./internal/server/middleware ./internal/service ./internal/repository`。
+- 通过：`pnpm typecheck`。
+- 通过：`pnpm vitest run src/components/keys/__tests__/UseKeyModal.spec.ts src/composables/__tests__/useModelWhitelist.spec.ts`（2 files / 20 tests passed）。
+- 通过：`git diff --check HEAD^1 HEAD`；并确认 `upstream-v0.1.151` 已是 merge commit 的祖先。
+
+### Notes
+- `backend/`、`frontend/src/`、`backend/migrations/173_allow_cyber_blocked_usage_request_type.sql`、`backend/resources/model-pricing/model_prices_and_context_window.json`：合入上游 v0.1.151 的 69 个文件变更。
+- `backup/main-before-v0.1.151-20260710-cfab0bb3`：合并前安全回滚点，已推送至 `origin`。
+- 回滚方式：使用 `git revert -m 1 be070cd1` 回退本次上游合并；或从远端备份分支恢复。禁止使用 reset 或 force push。
