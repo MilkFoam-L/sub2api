@@ -1,10 +1,6 @@
 package service
 
-import (
-	"strings"
-
-	"github.com/Wei-Shaw/sub2api/internal/config"
-)
+import "strings"
 
 func firstNonEmpty(values ...string) string {
 	for _, value := range values {
@@ -247,9 +243,6 @@ type SystemSettings struct {
 	OpenAIAdvancedSchedulerEffectiveWeightQuotaHeadroom    string
 	OpenAIAdvancedSchedulerEffectiveWeightPreviousResponse string
 	OpenAIAdvancedSchedulerEffectiveWeightSessionSticky    string
-
-	// 普通网关调度策略
-	GatewayScheduling config.GatewaySchedulingConfig
 
 	// 余额不足提醒
 

@@ -30,58 +30,6 @@ type CustomEndpoint struct {
 	Description string `json:"description"`
 }
 
-type GatewaySchedulingScoreWeights struct {
-	Load           float64 `json:"load"`
-	Queue          float64 `json:"queue"`
-	Debt           float64 `json:"debt"`
-	ErrorRate      float64 `json:"error_rate"`
-	Latency        float64 `json:"latency"`
-	RateMultiplier float64 `json:"rate_multiplier"`
-	QuotaRisk      float64 `json:"quota_risk"`
-}
-
-type GatewaySchedulingActiveProbeSettings struct {
-	AutoPauseEnabled bool   `json:"auto_pause_enabled"`
-	FailureThreshold int    `json:"failure_threshold"`
-	PauseDuration    string `json:"pause_duration"`
-	PauseDurationMax string `json:"pause_duration_max"`
-}
-
-type GatewaySchedulingSlowStartSettings struct {
-	Enabled  bool    `json:"enabled"`
-	Duration string  `json:"duration"`
-	Penalty  float64 `json:"penalty"`
-}
-
-type GatewaySchedulingUpstreamRateSettings struct {
-	Enabled         bool    `json:"enabled"`
-	StaleTTLSeconds int     `json:"stale_ttl_seconds"`
-	RateWeight      float64 `json:"rate_weight"`
-	HealthWeight    float64 `json:"health_weight"`
-	MinSuccessRate  float64 `json:"min_success_rate"`
-}
-
-type GatewaySchedulingCredentialSettings struct {
-	Strategy        string `json:"strategy"`
-	FallbackEnabled bool   `json:"fallback_enabled"`
-}
-
-type GatewaySchedulingSettings struct {
-	PreferredAccountID        int64                                 `json:"preferred_account_id"`
-	PreferredAccountByGroupID map[int64]int64                       `json:"preferred_account_by_group_id"`
-	ScoreWeights              GatewaySchedulingScoreWeights         `json:"score_weights"`
-	LatencyBaselineMS         int                                   `json:"latency_baseline_ms"`
-	QuotaRiskThreshold        float64                               `json:"quota_risk_threshold"`
-	MaxScorePenalty           float64                               `json:"max_score_penalty"`
-	StickySessionMode         string                                `json:"sticky_session_mode"`
-	StickyEscapeScoreRatio    float64                               `json:"sticky_escape_score_ratio"`
-	StickyEscapeLoadRate      int                                   `json:"sticky_escape_load_rate"`
-	ActiveProbe               GatewaySchedulingActiveProbeSettings  `json:"active_probe"`
-	SlowStart                 GatewaySchedulingSlowStartSettings    `json:"slow_start"`
-	UpstreamRate              GatewaySchedulingUpstreamRateSettings `json:"upstream_rate"`
-	Credential                GatewaySchedulingCredentialSettings   `json:"credential"`
-}
-
 // SystemSettings represents the admin settings API response payload.
 type SystemSettings struct {
 	RegistrationEnabled              bool                     `json:"registration_enabled"`
@@ -290,9 +238,6 @@ type SystemSettings struct {
 	OpenAIAdvancedSchedulerEffectiveWeightQuotaHeadroom    string `json:"openai_advanced_scheduler_effective_weight_quota_headroom"`
 	OpenAIAdvancedSchedulerEffectiveWeightPreviousResponse string `json:"openai_advanced_scheduler_effective_weight_previous_response"`
 	OpenAIAdvancedSchedulerEffectiveWeightSessionSticky    string `json:"openai_advanced_scheduler_effective_weight_session_sticky"`
-
-	// Gateway scheduling policy
-	GatewayScheduling GatewaySchedulingSettings `json:"gateway_scheduling"`
 
 	// Payment configuration
 	PaymentEnabled                   bool     `json:"payment_enabled"`

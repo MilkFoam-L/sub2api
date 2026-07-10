@@ -7418,7 +7418,6 @@ import type {
   WebSearchEmulationConfig,
   WebSearchProviderConfig,
   WebSearchTestResult,
-  GatewaySchedulingSettings,
 } from "@/api/admin/settings";
 import type {
   AdminGroup,
@@ -8067,50 +8066,6 @@ interface DefaultSubscriptionGroupOption {
   [key: string]: unknown;
 }
 
-function defaultGatewaySchedulingSettings(): GatewaySchedulingSettings {
-  return {
-    preferred_account_id: 0,
-    preferred_account_by_group_id: {},
-    score_weights: {
-      load: 1,
-      queue: 1,
-      debt: 1,
-      error_rate: 0.8,
-      latency: 0.4,
-      rate_multiplier: 0.6,
-      quota_risk: 0.3,
-    },
-    latency_baseline_ms: 15000,
-    quota_risk_threshold: 0.2,
-    max_score_penalty: 5,
-    sticky_session_mode: "soft",
-    sticky_escape_score_ratio: 1.25,
-    sticky_escape_load_rate: 75,
-    active_probe: {
-      auto_pause_enabled: true,
-      failure_threshold: 3,
-      pause_duration: "10m",
-      pause_duration_max: "1h",
-    },
-    slow_start: {
-      enabled: true,
-      duration: "5m",
-      penalty: 1,
-    },
-    upstream_rate: {
-      enabled: false,
-      stale_ttl_seconds: 600,
-      rate_weight: 0.6,
-      health_weight: 0.4,
-      min_success_rate: 0.8,
-    },
-    credential: {
-      strategy: "balanced",
-      fallback_enabled: true,
-    },
-  };
-}
-
 type SettingsForm = Omit<
   SystemSettings,
   | "wechat_connect_open_enabled"
@@ -8343,7 +8298,6 @@ const form = reactive<SettingsForm>({
   // 分组隔离
   allow_ungrouped_key_scheduling: false,
   openai_advanced_scheduler_enabled: false,
-  gateway_scheduling: defaultGatewaySchedulingSettings(),
   openai_advanced_scheduler_sticky_weighted_enabled: false,
   openai_advanced_scheduler_subscription_priority_enabled: false,
   openai_advanced_scheduler_lb_top_k: "",

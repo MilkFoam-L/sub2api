@@ -361,54 +361,6 @@ export type OpenAIImagesResponsesReasoningEffort =
   | "high"
   | "xhigh";
 
-export interface GatewaySchedulingScoreWeights {
-  load: number;
-  queue: number;
-  debt: number;
-  error_rate: number;
-  latency: number;
-  rate_multiplier: number;
-  quota_risk: number;
-}
-
-export type GatewaySchedulingCredentialStrategy = "balanced" | "oauth_first" | "api_key_first" | string;
-
-export interface GatewaySchedulingCredentialSettings {
-  strategy: GatewaySchedulingCredentialStrategy;
-  fallback_enabled: boolean;
-}
-
-export interface GatewaySchedulingSettings {
-  preferred_account_id: number;
-  preferred_account_by_group_id: Record<string, number>;
-  score_weights: GatewaySchedulingScoreWeights;
-  latency_baseline_ms: number;
-  quota_risk_threshold: number;
-  max_score_penalty: number;
-  sticky_session_mode: "strict" | "soft" | "off" | string;
-  sticky_escape_score_ratio: number;
-  sticky_escape_load_rate: number;
-  active_probe: {
-    auto_pause_enabled: boolean;
-    failure_threshold: number;
-    pause_duration: string;
-    pause_duration_max: string;
-  };
-  slow_start: {
-    enabled: boolean;
-    duration: string;
-    penalty: number;
-  };
-  upstream_rate: {
-    enabled: boolean;
-    stale_ttl_seconds: number;
-    rate_weight: number;
-    health_weight: number;
-    min_success_rate: number;
-  };
-  credential: GatewaySchedulingCredentialSettings;
-}
-
 export interface SystemSettings {
   // Registration settings
   registration_enabled: boolean;
@@ -662,7 +614,6 @@ export interface SystemSettings {
   payment_visible_method_alipay_enabled?: boolean;
   payment_visible_method_wxpay_enabled?: boolean;
   openai_advanced_scheduler_enabled?: boolean;
-  gateway_scheduling: GatewaySchedulingSettings;
   openai_advanced_scheduler_sticky_weighted_enabled?: boolean;
   openai_advanced_scheduler_subscription_priority_enabled?: boolean;
   openai_advanced_scheduler_lb_top_k?: string;
@@ -935,7 +886,6 @@ export interface UpdateSettingsRequest {
   payment_visible_method_alipay_enabled?: boolean;
   payment_visible_method_wxpay_enabled?: boolean;
   openai_advanced_scheduler_enabled?: boolean;
-  gateway_scheduling?: GatewaySchedulingSettings;
   openai_advanced_scheduler_sticky_weighted_enabled?: boolean;
   openai_advanced_scheduler_subscription_priority_enabled?: boolean;
   openai_advanced_scheduler_lb_top_k?: string;

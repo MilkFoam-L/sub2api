@@ -12,7 +12,6 @@ import redeemAPI from './redeem'
 import promoAPI from './promo'
 import announcementsAPI from './announcements'
 import settingsAPI from './settings'
-import schedulingAPI from './scheduling'
 import systemAPI from './system'
 import subscriptionsAPI from './subscriptions'
 import usageAPI from './usage'
@@ -34,7 +33,6 @@ import adminPaymentAPI from './payment'
 import affiliatesAPI from './affiliates'
 import riskControlAPI from './riskControl'
 import adminComplianceAPI from './compliance'
-import upstreamRatesAPI from './upstreamRates'
 
 /**
  * Unified admin API object for convenient access
@@ -49,7 +47,6 @@ export const adminAPI = {
   promo: promoAPI,
   announcements: announcementsAPI,
   settings: settingsAPI,
-  scheduling: schedulingAPI,
   system: systemAPI,
   subscriptions: subscriptionsAPI,
   usage: usageAPI,
@@ -70,8 +67,7 @@ export const adminAPI = {
   payment: adminPaymentAPI,
   affiliates: affiliatesAPI,
   riskControl: riskControlAPI,
-  compliance: adminComplianceAPI,
-  upstreamRates: upstreamRatesAPI
+  compliance: adminComplianceAPI
 }
 
 export {
@@ -84,7 +80,6 @@ export {
   promoAPI,
   announcementsAPI,
   settingsAPI,
-  schedulingAPI,
   systemAPI,
   subscriptionsAPI,
   usageAPI,
@@ -105,8 +100,7 @@ export {
   adminPaymentAPI,
   affiliatesAPI,
   riskControlAPI,
-  adminComplianceAPI,
-  upstreamRatesAPI
+  adminComplianceAPI
 }
 
 export default adminAPI

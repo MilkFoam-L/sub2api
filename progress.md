@@ -697,3 +697,24 @@
 - `backend/internal/handler/admin/scheduling_handler.go`、`backend/internal/service/gateway_scheduling_settings.go`：删除孤立实现。
 - `backend/migrations/159_add_upstream_rate_sources.sql`：只读审查，保留历史文件；闲置表后续仅可通过有授权的新前向 migration 处置。
 - 回滚方式：提交后执行 `git revert <Task 3 commit>`；不会修改 migration 159 或现有数据库数据。
+
+## 2026-07-10 - Task: 删除独立调度面板与上游倍率残留
+
+### What was done
+- 完整删除独立调度面板、优先账号调度、OAuth/API Key 凭据池策略、内存调度日志和上游倍率采集/绑定/健康检查的前后端实现及专属测试。
+- 清理 settings DTO、setting keys、运行时配置字段、前端 API/路由/侧边栏/设置类型，普通 gateway 恢复只使用文件或环境变量配置。
+- 保留 Weighted P2C、legacy LRU、Sticky、ActiveProbe、SlowStart、账号自身倍率、OpenAI 高级调度和 401 Team 可重试功能。
+- 保留已发布 migration 159，不删除历史 migration，不执行数据库 DROP。
+
+### Testing
+- 通过：设置临时 GOCACHE 后执行 `go test ./... -run TestNameThatDoesNotExist`，全部后端包与测试完成编译触达。
+- 通过：`go test ./internal/service -run TestSchedulerPolicy`、`go test ./internal/service -run TestAccount_BillingRateMultiplier`、`go test ./internal/service -run TestSetOpenAITeam401Retryable`、`go test ./internal/config`。
+- 通过：`./node_modules/.bin/vue-tsc --noEmit --pretty false`、`./node_modules/.bin/tsc --noEmit -p tsconfig.node.json --pretty false`、`./node_modules/.bin/vite build`；仅保留既有 Browserslist、dynamic import 和 chunk size 警告。
+- 通过：专属符号残留搜索、`git diff --check` 和 migration 159 差异检查。
+
+### Notes
+- `backend/internal/{config,handler,repository,service}`：删除独立调度/上游倍率模块、数据库调度覆盖契约和专属测试，保留普通调度与 OpenAI 路径。
+- `frontend/src/{api,components/layout,router,views/admin}`：删除调度页面、API、路由、菜单入口和 settings 类型/默认值。
+- `docs/SCHEDULER_OPTIMIZATION_NOTES.md`：改为说明当前仍保留的普通调度能力、历史 migration 边界和 401 Team 功能。
+- `progress.md`：追加本轮删除、验证和回滚说明。
+- 回滚方式：提交后执行 `git revert <Task 4 commit>`；未提交时可按本轮 `git diff --name-status` 清单逐文件恢复。migration 159 未修改，无数据库回滚动作。

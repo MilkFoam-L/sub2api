@@ -1192,35 +1192,8 @@ type GatewaySchedulingSlowStartConfig struct {
 	Penalty  float64       `mapstructure:"penalty"`
 }
 
-// GatewaySchedulingUpstreamRateConfig controls optional upstream-rate soft scheduling signals.
-type GatewaySchedulingUpstreamRateConfig struct {
-	Enabled         bool    `mapstructure:"enabled"`
-	StaleTTLSeconds int     `mapstructure:"stale_ttl_seconds"`
-	RateWeight      float64 `mapstructure:"rate_weight"`
-	HealthWeight    float64 `mapstructure:"health_weight"`
-	MinSuccessRate  float64 `mapstructure:"min_success_rate"`
-}
-
-const (
-	GatewaySchedulingCredentialStrategyBalanced    = "balanced"
-	GatewaySchedulingCredentialStrategyOAuthFirst  = "oauth_first"
-	GatewaySchedulingCredentialStrategyAPIKeyFirst = "api_key_first"
-)
-
-// GatewaySchedulingCredentialConfig controls credential-type pool ordering.
-type GatewaySchedulingCredentialConfig struct {
-	Strategy        string `mapstructure:"strategy"`
-	FallbackEnabled bool   `mapstructure:"fallback_enabled"`
-}
-
 // GatewaySchedulingConfig accounts scheduling configuration.
 type GatewaySchedulingConfig struct {
-	// PreferredAccountID 保留兼容旧配置；新调度面板使用 PreferredAccountByGroupID 按分组指定。
-	// 仅在账号已通过硬过滤且位于当前 priority 候选层内生效。
-	PreferredAccountID int64 `mapstructure:"preferred_account_id"`
-	// PreferredAccountByGroupID 按分组指定优先调度账号；key=group_id，0 表示未分组/默认。
-	PreferredAccountByGroupID map[int64]int64 `mapstructure:"preferred_account_by_group_id"`
-
 	// 粘性会话排队配置
 	StickySessionMaxWaiting  int           `mapstructure:"sticky_session_max_waiting"`
 	StickySessionWaitTimeout time.Duration `mapstructure:"sticky_session_wait_timeout"`
@@ -1254,10 +1227,6 @@ type GatewaySchedulingConfig struct {
 	ActiveProbe GatewaySchedulingActiveProbeConfig `mapstructure:"active_probe"`
 	// SlowStart 恢复账号的慢启动软惩罚配置。
 	SlowStart GatewaySchedulingSlowStartConfig `mapstructure:"slow_start"`
-	// UpstreamRate 上游倍率/可用率软成本信号；默认关闭，不改变现有调度。
-	UpstreamRate GatewaySchedulingUpstreamRateConfig `mapstructure:"upstream_rate"`
-	// Credential 凭据类型主池策略；默认 balanced，不改变现有调度。
-	Credential GatewaySchedulingCredentialConfig `mapstructure:"credential"`
 	// StickySessionMode: strict(强粘性)、soft(负载过高可逃逸)、off(关闭 session 粘性)。
 	StickySessionMode string `mapstructure:"sticky_session_mode"`
 	// StickyEscapeScoreRatio soft 粘性下 sticky cost 超过最佳同层 cost 的倍率时逃逸。
@@ -2204,11 +2173,6 @@ func setDefaults() {
 	viper.SetDefault("gateway.scheduling.slow_start.enabled", true)
 	viper.SetDefault("gateway.scheduling.slow_start.duration", 5*time.Minute)
 	viper.SetDefault("gateway.scheduling.slow_start.penalty", 1.0)
-	viper.SetDefault("gateway.scheduling.upstream_rate.enabled", false)
-	viper.SetDefault("gateway.scheduling.upstream_rate.stale_ttl_seconds", 600)
-	viper.SetDefault("gateway.scheduling.upstream_rate.rate_weight", 0.6)
-	viper.SetDefault("gateway.scheduling.upstream_rate.health_weight", 0.4)
-	viper.SetDefault("gateway.scheduling.upstream_rate.min_success_rate", 0.8)
 	viper.SetDefault("gateway.scheduling.sticky_session_mode", GatewayStickySessionModeSoft)
 	viper.SetDefault("gateway.scheduling.sticky_escape_score_ratio", 1.25)
 	viper.SetDefault("gateway.scheduling.sticky_escape_load_rate", 75)

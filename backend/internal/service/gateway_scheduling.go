@@ -661,7 +661,7 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 
 	loadMap, err := s.concurrencyService.GetAccountsLoadBatch(ctx, accountLoads)
 	if err != nil {
-		if result, ok, legacyErr := s.tryAcquireByLegacyOrder(ctx, candidates, groupID, sessionHash, preferOAuth, cfg, platform, requestedModel); legacyErr != nil {
+		if result, ok, legacyErr := s.tryAcquireByLegacyOrder(ctx, candidates, groupID, sessionHash, preferOAuth); legacyErr != nil {
 			return nil, legacyErr
 		} else if ok {
 			return result, nil
@@ -739,7 +739,7 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 	return nil, ErrNoAvailableAccounts
 }
 
-func (s *GatewayService) tryAcquireByLegacyOrder(ctx context.Context, candidates []*Account, groupID *int64, sessionHash string, preferOAuth bool, cfg config.GatewaySchedulingConfig, platform string, requestedModel string) (*AccountSelectionResult, bool, error) {
+func (s *GatewayService) tryAcquireByLegacyOrder(ctx context.Context, candidates []*Account, groupID *int64, sessionHash string, preferOAuth bool) (*AccountSelectionResult, bool, error) {
 	items := make([]accountWithLoad, 0, len(candidates))
 	for _, acc := range candidates {
 		if acc == nil {
@@ -764,23 +764,6 @@ func (s *GatewayService) tryAcquireByLegacyOrder(ctx context.Context, candidates
 			if sessionHash != "" && s.cache != nil {
 				_ = s.cache.SetSessionAccountID(ctx, derefGroupID(groupID), sessionHash, acc.ID, stickySessionTTL)
 			}
-			accountID, accountName := schedulingLogAccountFields(acc)
-			s.recordSchedulingLog(ctx, SchedulingLogEvent{
-				Platform:                  platform,
-				Model:                     requestedModel,
-				GroupID:                   derefGroupID(groupID),
-				CandidateCount:            len(candidates),
-				AvailableCount:            len(orderedItems),
-				AccountID:                 accountID,
-				AccountName:               accountName,
-				PreferredAccountID:        cfg.PreferredAccountID,
-				PreferredHit:              schedulingLogPreferredHit(acc, cfg.PreferredAccountID),
-				StickyStatus:              "rebound",
-				CredentialStrategy:        cfg.Credential.Strategy,
-				CredentialFallbackEnabled: cfg.Credential.FallbackEnabled,
-				SelectedCredentialType:    schedulingLogCredentialType(acc),
-				Reason:                    "legacy_fallback_selected",
-			})
 			selection, err := s.newSelectionResult(ctx, acc, true, result.ReleaseFunc, nil)
 			if err != nil {
 				return nil, false, err
@@ -790,38 +773,6 @@ func (s *GatewayService) tryAcquireByLegacyOrder(ctx context.Context, candidates
 	}
 
 	return nil, false, nil
-}
-
-func schedulingLogAccountFields(account *Account) (int64, string) {
-	if account == nil {
-		return 0, ""
-	}
-	return account.ID, account.Name
-}
-
-func schedulingLogCredentialType(account *Account) string {
-	if account == nil {
-		return ""
-	}
-	return account.Type
-}
-
-func schedulingLogPreferredHit(account *Account, preferredAccountID int64) bool {
-	return account != nil && preferredAccountID > 0 && account.ID == preferredAccountID
-}
-
-func (s *GatewayService) recordSchedulingLog(ctx context.Context, event SchedulingLogEvent) {
-	if event.RequestID == "" {
-		if value, ok := ctx.Value(ctxkey.RequestID).(string); ok {
-			event.RequestID = value
-		}
-	}
-	if event.ClientRequestID == "" {
-		if value, ok := ctx.Value(ctxkey.ClientRequestID).(string); ok {
-			event.ClientRequestID = value
-		}
-	}
-	DefaultSchedulingLogService.Record(event)
 }
 
 func (s *GatewayService) schedulingConfig() config.GatewaySchedulingConfig {
