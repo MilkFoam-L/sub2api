@@ -824,18 +824,7 @@ func (s *GatewayService) recordSchedulingLog(ctx context.Context, event Scheduli
 	DefaultSchedulingLogService.Record(event)
 }
 
-func (s *GatewayService) schedulingConfig(ctxs ...context.Context) config.GatewaySchedulingConfig {
-	ctx := context.Background()
-	if len(ctxs) > 0 && ctxs[0] != nil {
-		ctx = ctxs[0]
-	}
-	if s != nil && s.settingService != nil {
-		if cfg, err := s.settingService.GetGatewaySchedulingConfig(ctx); err == nil {
-			return normalizeGatewaySchedulingConfig(cfg)
-		} else {
-			slog.Warn("gateway_scheduling_settings_fallback", "error", err)
-		}
-	}
+func (s *GatewayService) schedulingConfig() config.GatewaySchedulingConfig {
 	if s != nil && s.cfg != nil {
 		return normalizeGatewaySchedulingConfig(s.cfg.Gateway.Scheduling)
 	}

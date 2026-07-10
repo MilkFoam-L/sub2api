@@ -62,9 +62,6 @@ func RegisterAdminRoutes(
 		// 系统设置
 		registerSettingsRoutes(admin, h)
 
-		// 调度面板
-		registerSchedulingRoutes(admin, h)
-
 		// 数据管理
 		registerDataManagementRoutes(admin, h)
 
@@ -458,33 +455,6 @@ func registerPromoCodeRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		promoCodes.PUT("/:id", h.Admin.Promo.Update)
 		promoCodes.DELETE("/:id", h.Admin.Promo.Delete)
 		promoCodes.GET("/:id/usages", h.Admin.Promo.GetUsages)
-	}
-}
-
-func registerSchedulingRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
-	scheduling := admin.Group("/scheduling")
-	{
-		scheduling.GET("/config", h.Admin.Scheduling.GetConfig)
-		scheduling.PUT("/config", h.Admin.Scheduling.UpdateConfig)
-		scheduling.GET("/logs", h.Admin.Scheduling.ListLogs)
-
-		upstreamRates := scheduling.Group("/upstream-rates")
-		{
-			upstreamRates.GET("/sources", h.Admin.UpstreamRate.ListSources)
-			upstreamRates.POST("/sources", h.Admin.UpstreamRate.CreateSource)
-			upstreamRates.GET("/sources/:id", h.Admin.UpstreamRate.GetSource)
-			upstreamRates.PUT("/sources/:id", h.Admin.UpstreamRate.UpdateSource)
-			upstreamRates.DELETE("/sources/:id", h.Admin.UpstreamRate.DeleteSource)
-			upstreamRates.POST("/sources/:id/test", h.Admin.UpstreamRate.TestSource)
-			upstreamRates.POST("/sources/:id/sync", h.Admin.UpstreamRate.SyncSource)
-			upstreamRates.GET("/sources/:id/snapshots", h.Admin.UpstreamRate.LatestSnapshots)
-			upstreamRates.GET("/bindings", h.Admin.UpstreamRate.ListBindings)
-			upstreamRates.POST("/bindings", h.Admin.UpstreamRate.CreateBinding)
-			upstreamRates.PUT("/bindings/:id", h.Admin.UpstreamRate.UpdateBinding)
-			upstreamRates.DELETE("/bindings/:id", h.Admin.UpstreamRate.DeleteBinding)
-			upstreamRates.GET("/overview", h.Admin.UpstreamRate.Overview)
-			upstreamRates.GET("/health", h.Admin.UpstreamRate.Health)
-		}
 	}
 }
 

@@ -641,3 +641,38 @@
 - `backend/internal/service/openai_ws_forwarder.go`、`backend/internal/service/openai_ws_forwarder_ingress.go`、`backend/internal/service/openai_ws_v2_passthrough_adapter.go`：恢复 WS hook payload 替换能力以匹配 handler 隐私过滤链路。
 - `progress.md`：追加本轮镜像构建、腾讯云推送、验证与回滚说明。
 - 回滚方式：部署端可回切到上一版镜像 `ccr.ccs.tencentyun.com/apophis-chat/sub2api:0.1.146-bed4513f-20260708145750`；代码层可 revert `1a7937c6`，并对合并提交 `b6667e13` 执行 `git revert -m 1 b6667e13`。
+
+## 2026-07-10 - Task: 建立功能清理与 v0.1.149 合并发布基线
+
+### What was done
+- 完整读取 `goal-1` 目标、计划、任务和最新检查点，完成 Task 1 的 Git、功能边界、构建测试入口及腾讯云镜像基线审计。
+- 逐项解释当前 15 个已跟踪修改，确认均为正在进行的独立调度/账号分配/上游倍率清理，没有来源不明的业务修改。
+- 建立必须删除与必须保留清单，明确保留普通 gateway 调度、OpenAI 高级调度和 401 Team 可重试能力。
+
+### Testing
+- 只读验证：`git status -sb`、`git branch -vv`、`git stash list`、目标提交逐个 `git show --name-status`、关键符号残留搜索。
+- 工具链基线：Go `1.26.0`、Node `22.18.0`、pnpm `10.28.0`、Docker client `29.5.3`。
+- 本任务未修改业务代码，未运行编译或测试；已记录当前 `buildLegacyLRUSelectionOrder` 半清理签名不一致，交由后续任务修复并验证。
+
+### Notes
+- `goal-1/tasks.md`：标记 Task 1 完成并写入完整边界、验证入口、风险与下一步。
+- `progress.md`：追加本轮基线审计记录。
+- 回滚方式：本轮仅新增 Goal/进度记录，可删除 `goal-1/` 并回退本段 `progress.md`；未改动业务代码或 Git 历史。
+
+## 2026-07-10 - Task: 断开独立调度与上游倍率运行入口
+
+### What was done
+- 删除 admin 独立调度与上游倍率路由、handler 聚合字段及 Wire provider，服务启动不再构造相关 repository/service/runner。
+- 普通 gateway 和定时探测 runner 恢复为只读取文件中的 `gateway.scheduling` 配置，不再使用数据库运行时覆盖。
+- 从定时探测 runner 移除无效的 `SettingService` 依赖，同时保留普通 ActiveProbe、慢启动、账号暂停与恢复能力。
+
+### Testing
+- 静态搜索活动路由、handler、repository/service provider、runner 启动和 settings override：无命中。
+- `git diff --check` 通过，仅有 `progress.md` 的 LF/CRLF 工作区提示。
+- 执行 `go test ./internal/service -run 'TestScheduledTestRunner|TestScheduledProbe' -count=1`；编译仍被后续待删的 preferred account、credential helper、gateway settings cache 及相关测试符号阻断，改动前后错误集合一致，无新增 Task 2 构造链错误。
+
+### Notes
+- `backend/internal/server/routes/admin.go`、`backend/internal/handler/{handler.go,wire.go}`：断开 HTTP 与 handler 注入入口。
+- `backend/internal/repository/wire.go`、`backend/internal/service/wire.go`、`backend/cmd/server/wire_gen.go`：断开 repository/service/runner 启动链。
+- `backend/internal/service/{gateway_scheduling.go,scheduled_test_runner_service.go,setting_service.go}`：停止 DB 调度配置热更新并移除无效依赖。
+- 回滚方式：提交后执行 `git revert <Task 2 commit>`；不会触碰现有 stash、历史迁移或用户尚未提交的后续清理文件。

@@ -38,7 +38,6 @@ type ScheduledTestRunnerService struct {
 	rateLimitRecoverer scheduledTestAccountRecoverer
 	accountPauser      scheduledTestAccountPauser
 	slowStartMarker    AccountSlowStartMarker
-	settingService     *SettingService
 	cfg                *config.Config
 
 	cron      *cron.Cron
@@ -54,7 +53,6 @@ func NewScheduledTestRunnerService(
 	rateLimitSvc *RateLimitService,
 	accountPauser scheduledTestAccountPauser,
 	slowStartMarker AccountSlowStartMarker,
-	settingService *SettingService,
 	cfg *config.Config,
 ) *ScheduledTestRunnerService {
 	return &ScheduledTestRunnerService{
@@ -64,7 +62,6 @@ func NewScheduledTestRunnerService(
 		rateLimitRecoverer: rateLimitSvc,
 		accountPauser:      accountPauser,
 		slowStartMarker:    slowStartMarker,
-		settingService:     settingService,
 		cfg:                cfg,
 	}
 }
@@ -178,12 +175,7 @@ func (s *ScheduledTestRunnerService) runOnePlan(ctx context.Context, plan *Sched
 	}
 }
 
-func (s *ScheduledTestRunnerService) schedulingConfig(ctx context.Context) config.GatewaySchedulingConfig {
-	if s != nil && s.settingService != nil {
-		if cfg, err := s.settingService.GetGatewaySchedulingConfig(ctx); err == nil {
-			return normalizeGatewaySchedulingConfig(cfg)
-		}
-	}
+func (s *ScheduledTestRunnerService) schedulingConfig() config.GatewaySchedulingConfig {
 	if s == nil || s.cfg == nil {
 		return normalizeGatewaySchedulingConfig(config.GatewaySchedulingConfig{})
 	}
@@ -194,7 +186,7 @@ func (s *ScheduledTestRunnerService) tryPauseAccountAfterConsecutiveProbeFailure
 	if s == nil || plan == nil || s.scheduledSvc == nil || s.accountPauser == nil {
 		return
 	}
-	cfg := s.schedulingConfig(ctx).ActiveProbe
+	cfg := s.schedulingConfig().ActiveProbe
 	if !cfg.AutoPauseEnabled {
 		return
 	}
@@ -274,7 +266,7 @@ func (s *ScheduledTestRunnerService) tryRecoverAccount(ctx context.Context, acco
 	if recovery.ClearedRateLimit {
 		logger.LegacyPrintf("service.scheduled_test_runner", "[ScheduledTestRunner] plan=%d auto-recover: account=%d cleared rate-limit/runtime state", planID, accountID)
 	}
-	schedulingCfg := s.schedulingConfig(ctx)
+	schedulingCfg := s.schedulingConfig()
 	if (recovery.ClearedError || recovery.ClearedRateLimit) && s.slowStartMarker != nil && schedulingCfg.SlowStart.Enabled {
 		s.slowStartMarker.MarkAccountSlowStart(accountID, schedulingCfg.SlowStart.Duration)
 	}
