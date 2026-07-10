@@ -199,13 +199,21 @@
 
 ## Task 16：合并后全量构建、测试与 Docker 本地验证
 
-- [ ] 状态：未完成
+- [x] 状态：已完成
 - 内容：运行仓库可用的后端测试/构建、前端检查/构建、生成代码检查、Docker build；可行时启动镜像做健康检查。
 - 独立验证：记录命令、退出状态和关键结果，修复到无已知高风险失败。
 - 做了什么：
+  - 在前序后端全量测试、前端 955 个测试、Vue/TS 检查和 Vite 构建基础上，完成无缓存 Docker 多阶段 release 构建。
+  - 修复 `.dockerignore` 未排除根目录及子目录 `.gocache` 的问题，避免约 6.2GB 无关缓存进入构建上下文；提交为 `99d2069d build(docker): 排除本地 Go 缓存构建上下文`。
+  - 按用户要求执行 `docker system prune -a -f`，清理未使用镜像、停止容器、网络和构建缓存，未执行 volume prune；首次回收 19.29GB，健康验证后再清理依赖和中间层 1.104GB。
+  - 从零构建 `sub2api:0.1.149-74b343b8-local`，最终仅保留 303MB 成品镜像。
 - 验证结果：
-- 剩余风险：
-- 下一步：
+  - 镜像 ID `sha256:ee73fbf3bb2e7b73363e1e5ef3a3b694800bdb8aa3f5c48197c80cdae0365a31`。
+  - `--version` 输出 `Sub2API 0.1.149 (commit: 74b343b8)`；运行用户为 `uid=1000(sub2api)`、`gid=1000(sub2api)`。
+  - 隔离 PostgreSQL/Redis 自动初始化、迁移和启动成功；`/health` 返回 `{"status":"ok"}`，Docker health status 为 `healthy`。
+  - 最终 `docker system df`：1 个成品镜像、0 容器、0 构建缓存；3 个本轮匿名卷总占用 0B，按不删除数据卷边界保留。
+- 剩余风险：本机缺少 buildx，本轮使用仓库现有 `deploy/Dockerfile`/legacy builder；Task 18 发布前需复核生产根 Dockerfile 的 PostgreSQL 客户端层，或使用等价 no-BuildKit 构建方式。legacy builder 弃用提示不影响本次构建结果。
+- 下一步：Task 17，复核提交历史，推送 `main` 和合并前备份分支并验证远端引用。
 
 ## Task 17：提交合并结果并推送代码
 
