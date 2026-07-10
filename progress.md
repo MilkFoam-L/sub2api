@@ -899,3 +899,21 @@
 - `backend/`、`frontend/src/`、`backend/migrations/173_allow_cyber_blocked_usage_request_type.sql`、`backend/resources/model-pricing/model_prices_and_context_window.json`：合入上游 v0.1.151 的 69 个文件变更。
 - `backup/main-before-v0.1.151-20260710-cfab0bb3`：合并前安全回滚点，已推送至 `origin`。
 - 回滚方式：使用 `git revert -m 1 be070cd1` 回退本次上游合并；或从远端备份分支恢复。禁止使用 reset 或 force push。
+
+## 2026-07-10 - Task: 推送 v0.1.151 main 并发布腾讯云 Docker 镜像
+
+### What was done
+- 将已验证的 `main` 推送至 `origin`，远端提交为 `92400528`。
+- 构建并推送腾讯云 CCR 可追溯镜像 `ccr.ccs.tencentyun.com/apophis-chat/sub2api:0.1.151-92400528-20260710191539`。
+- 同步推送 `ccr.ccs.tencentyun.com/apophis-chat/sub2api:v0.1.151` 与 `ccr.ccs.tencentyun.com/apophis-chat/sub2api:latest`。
+
+### Testing
+- 通过：Docker 多阶段生产构建；本机缺少 buildx，临时使用仅移除 pnpm BuildKit cache mount 的 `.cache/Dockerfile.no-buildkit`，正式 Dockerfile 未改动。
+- 通过：镜像运行时输出 `Sub2API 0.1.151 (commit: 92400528)`。
+- 通过：默认入口执行 `--version`；镜像包含 `/app/resources`、可执行 `/app/sub2api`、`psql 18.4` 与 `pg_dump 18.4`。
+- 通过：三个远端标签均为 `linux/amd64`，manifest digest 一致：`sha256:ccb7a556ecd71c4b9b0839d674e42dbba2a2cd31c6348233efdea350c8a8a79d`。
+
+### Notes
+- `Dockerfile`：保持未修改；`.cache/Dockerfile.no-buildkit` 为已忽略的本机临时构建文件。
+- 先推送可追溯标签和 `v0.1.151`，成功后才更新 `latest`。
+- 回滚方式：部署端可回切到上一版 `ccr.ccs.tencentyun.com/apophis-chat/sub2api:v0.1.150`（此前 manifest digest `sha256:b65a42505e72d66fc4c3e30435006149520fbf7146ccb92251ff5876dd4dec6e`）；代码层按需执行 `git revert`，禁止 force push。
