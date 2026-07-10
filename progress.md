@@ -802,3 +802,23 @@
 - 本机构建未安装 buildx，临时 Dockerfile 位于系统 Temp，不在 Git 工作树中；仓库生产 `Dockerfile` 未被修改。
 - `progress.md`、`goal-1/tasks.md`：记录镜像标签、远端摘要、健康验证和回滚目标。
 - 回滚方式：部署端可回切到发布前 digest `sha256:d84d13da308b2157f2e761ea11e63a7497fd88ae773421d68cbf82be0032b82e`；代码层可使用远端备份分支或正常 `git revert`，禁止强推。
+
+## 2026-07-10 - Task: 修复导航和模型广场语言包键显示
+
+### What was done
+- 补齐 `nav.tokenLeaderboard`、`nav.modelMarket`、模型广场页面和管理端 Token 排行榜中英文语言包文案，避免界面回退显示变量键。
+- 新增语言包回归测试，覆盖导航项、模型广场页面和 Token 排行榜相关键，并复用现有键冲突测试防止语言包结构回归。
+
+### Testing
+- 通过：`pnpm exec vitest run src/i18n/__tests__/navigationFeatureLocales.spec.ts src/i18n/__tests__/localesNoKeyCollision.spec.ts`（70 passed）。
+- 通过：`pnpm test:run`（152 files / 1019 tests passed）。
+- 通过：`pnpm typecheck`。
+- 通过：`pnpm lint:check`。
+- 通过：`pnpm build`，仅有既有 Browserslist 过期、Vite chunk 与动态/静态 import 警告。
+
+### Notes
+- `frontend/src/i18n/locales/{zh,en}/common.ts`：补齐导航菜单文案。
+- `frontend/src/i18n/locales/{zh,en}/dashboard.ts`：补齐模型广场页面文案。
+- `frontend/src/i18n/locales/{zh,en}/admin/resources.ts`：在现有 `admin.usage` 结构下补齐 Token 排行榜文案。
+- `frontend/src/i18n/__tests__/navigationFeatureLocales.spec.ts`：新增语言包关键键回归测试。
+- 回滚方式：使用 `git revert <本次提交>` 正常回退语言包和测试变更，禁止改写公共历史。

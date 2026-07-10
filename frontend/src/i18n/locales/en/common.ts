@@ -163,6 +163,8 @@ export default {
     groups: 'Groups',
     channels: 'Channels',
     availableChannels: 'Available Channels',
+    modelMarket: 'Model Marketplace',
+    tokenLeaderboard: 'Token Leaderboard',
     subscriptions: 'Subscriptions',
     accounts: 'Accounts',
     proxies: 'Proxies',

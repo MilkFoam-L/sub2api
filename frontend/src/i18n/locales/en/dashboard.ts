@@ -494,6 +494,34 @@ export default {
     }
   },
 
+  modelMarket: {
+    title: 'Model Marketplace',
+    description: 'Browse available models, channels, and pricing status by group',
+    searchPlaceholder: 'Search groups, channels, or models...',
+    filters: {
+      allPlatforms: 'All platforms',
+      allChannels: 'All channels',
+      allPricing: 'All pricing',
+      withPricing: 'Pricing configured',
+      withoutPricing: 'No pricing'
+    },
+    summary: {
+      groups: '{count} groups',
+      models: '{count} models',
+      channels: '{count} channels'
+    },
+    columns: {
+      group: 'Group',
+      platform: 'Platform',
+      channels: 'Channels',
+      models: 'Models',
+      pricing: 'Pricing'
+    },
+    empty: 'No models to display',
+    pricingVaries: 'Pricing varies',
+    pricingConfigured: 'Configured'
+  },
+
   affiliate: {
     title: 'Affiliate Rebates',
     description: 'Invite new users and convert your rebate quota into account balance',
