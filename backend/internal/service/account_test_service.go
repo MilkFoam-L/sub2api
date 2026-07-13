@@ -639,11 +639,12 @@ func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
-		if resp.StatusCode == http.StatusTooManyRequests {
+		if s.persistOpenAIInsufficientBalance(ctx, account, resp.StatusCode, body) {
+			// 余额不足优先于同响应中的临时限流或鉴权状态。
+		} else if resp.StatusCode == http.StatusTooManyRequests {
 			s.reconcileOpenAI429State(ctx, account, resp.Header, body)
-		}
-		// 401 Unauthorized: 标记账号为永久错误
-		if resp.StatusCode == http.StatusUnauthorized && s.accountRepo != nil {
+		} else if resp.StatusCode == http.StatusUnauthorized && s.accountRepo != nil {
+			// 401 Unauthorized: 标记账号为永久错误
 			errMsg := fmt.Sprintf("Authentication failed (401): %s", string(body))
 			_ = s.accountRepo.SetError(ctx, account.ID, errMsg)
 		}
@@ -805,10 +806,11 @@ func (s *AccountTestService) testOpenAIChatCompletionsConnection(
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
-		if resp.StatusCode == http.StatusTooManyRequests {
+		if s.persistOpenAIInsufficientBalance(ctx, account, resp.StatusCode, body) {
+			// 余额不足优先于同响应中的临时限流或鉴权状态。
+		} else if resp.StatusCode == http.StatusTooManyRequests {
 			s.reconcileOpenAI429State(ctx, account, resp.Header, body)
-		}
-		if resp.StatusCode == http.StatusUnauthorized && s.accountRepo != nil {
+		} else if resp.StatusCode == http.StatusUnauthorized && s.accountRepo != nil {
 			errMsg := fmt.Sprintf("Chat Completions authentication failed (401): %s", string(body))
 			_ = s.accountRepo.SetError(ctx, account.ID, errMsg)
 		}
@@ -921,7 +923,9 @@ func (s *AccountTestService) testOpenAICompactConnection(c *gin.Context, account
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		if resp.StatusCode == http.StatusUnauthorized && s.accountRepo != nil {
+		if s.persistOpenAIInsufficientBalance(ctx, account, resp.StatusCode, body) {
+			// 余额不足优先于同响应中的鉴权状态。
+		} else if resp.StatusCode == http.StatusUnauthorized && s.accountRepo != nil {
 			errMsg := fmt.Sprintf("Authentication failed (401): %s", string(body))
 			_ = s.accountRepo.SetError(ctx, account.ID, errMsg)
 		}
@@ -931,6 +935,15 @@ func (s *AccountTestService) testOpenAICompactConnection(c *gin.Context, account
 	s.sendEvent(c, TestEvent{Type: "content", Text: "Compact probe succeeded"})
 	s.sendEvent(c, TestEvent{Type: "test_complete", Success: true})
 	return nil
+}
+
+func (s *AccountTestService) persistOpenAIInsufficientBalance(ctx context.Context, account *Account, statusCode int, body []byte) bool {
+	if s == nil || s.accountRepo == nil || account == nil || !isUpstreamInsufficientBalanceError(body) {
+		return false
+	}
+	errMsg := buildUpstreamInsufficientBalanceErrorMessage(statusCode, body)
+	_ = s.accountRepo.SetError(ctx, account.ID, errMsg)
+	return true
 }
 
 func (s *AccountTestService) reconcileOpenAI429State(ctx context.Context, account *Account, headers http.Header, body []byte) {
@@ -1658,6 +1671,7 @@ func (s *AccountTestService) testOpenAIImageAPIKey(c *gin.Context, ctx context.C
 	}
 
 	if resp.StatusCode != http.StatusOK {
+		s.persistOpenAIInsufficientBalance(ctx, account, resp.StatusCode, body)
 		return s.sendErrorAndEnd(c, fmt.Sprintf("API returned %d: %s", resp.StatusCode, string(body)))
 	}
 
@@ -1757,6 +1771,7 @@ func (s *AccountTestService) testOpenAIImageOAuth(c *gin.Context, ctx context.Co
 	}()
 	if resp.StatusCode >= 400 {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
+		s.persistOpenAIInsufficientBalance(ctx, account, resp.StatusCode, body)
 		message := strings.TrimSpace(extractUpstreamErrorMessage(body))
 		if message == "" {
 			message = fmt.Sprintf("Responses API returned %d", resp.StatusCode)

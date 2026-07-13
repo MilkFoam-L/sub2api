@@ -106,6 +106,18 @@ func TestRateLimitService_HandleUpstreamError_OpenAIInsufficientBalanceDisablesP
 			expectedCodeSnippet: "INSUFFICIENT_BALANCE",
 			expectedMsgSnippet:  "用户额度不足",
 		},
+		{
+			name:                "detail_insufficient_balance_code",
+			body:                []byte(`{"detail":{"code":"INSUFFICIENT_BALANCE","message":"Insufficient account balance"}}`),
+			expectedCodeSnippet: "INSUFFICIENT_BALANCE",
+			expectedMsgSnippet:  "Insufficient account balance",
+		},
+		{
+			name:                "embedded_top_level_insufficient_balance_code",
+			body:                []byte(`{"error":{"message":"{\"code\":\"INSUFFICIENT_BALANCE\",\"message\":\"Insufficient account balance\"}"}}`),
+			expectedCodeSnippet: "INSUFFICIENT_BALANCE",
+			expectedMsgSnippet:  "Insufficient account balance",
+		},
 	}
 
 	for _, tt := range tests {

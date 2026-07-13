@@ -796,13 +796,7 @@ func (s *RateLimitService) handleAuthError(ctx context.Context, account *Account
 }
 
 func (s *RateLimitService) handleUpstreamInsufficientBalance(ctx context.Context, account *Account, statusCode int, responseBody []byte) {
-	msg := "Upstream no balance (INSUFFICIENT_BALANCE): upstream account balance is insufficient"
-	if upstreamMsg := strings.TrimSpace(sanitizeUpstreamErrorMessage(extractUpstreamErrorMessage(responseBody))); upstreamMsg != "" {
-		msg = "Upstream no balance (INSUFFICIENT_BALANCE): " + truncateForLog([]byte(upstreamMsg), 512)
-	}
-	if statusCode > 0 {
-		msg = fmt.Sprintf("%s | status=%d", msg, statusCode)
-	}
+	msg := buildUpstreamInsufficientBalanceErrorMessage(statusCode, responseBody)
 	s.notifyAccountSchedulingBlocked(account, time.Time{}, "upstream_insufficient_balance")
 	if err := s.accountRepo.SetError(ctx, account.ID, msg); err != nil {
 		slog.Warn("account_set_upstream_insufficient_balance_failed", "account_id", account.ID, "status_code", statusCode, "error", err)

@@ -311,6 +311,12 @@ func extractUpstreamErrorCode(body []byte) string {
 	if code := strings.TrimSpace(gjson.GetBytes(body, "error.code").String()); code != "" {
 		return code
 	}
+	if code := strings.TrimSpace(gjson.GetBytes(body, "code").String()); code != "" {
+		return code
+	}
+	if code := strings.TrimSpace(gjson.GetBytes(body, "detail.code").String()); code != "" {
+		return code
+	}
 
 	inner := strings.TrimSpace(gjson.GetBytes(body, "error.message").String())
 	if !strings.HasPrefix(inner, "{") {
@@ -320,9 +326,22 @@ func extractUpstreamErrorCode(body []byte) string {
 	if code := strings.TrimSpace(gjson.Get(inner, "error.code").String()); code != "" {
 		return code
 	}
+	if code := strings.TrimSpace(gjson.Get(inner, "code").String()); code != "" {
+		return code
+	}
+	if code := strings.TrimSpace(gjson.Get(inner, "detail.code").String()); code != "" {
+		return code
+	}
 
 	if lastBrace := strings.LastIndex(inner, "}"); lastBrace >= 0 {
-		if code := strings.TrimSpace(gjson.Get(inner[:lastBrace+1], "error.code").String()); code != "" {
+		inner = inner[:lastBrace+1]
+		if code := strings.TrimSpace(gjson.Get(inner, "error.code").String()); code != "" {
+			return code
+		}
+		if code := strings.TrimSpace(gjson.Get(inner, "code").String()); code != "" {
+			return code
+		}
+		if code := strings.TrimSpace(gjson.Get(inner, "detail.code").String()); code != "" {
 			return code
 		}
 	}

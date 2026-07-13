@@ -971,3 +971,24 @@
 - `backend/cmd/server/VERSION`：更新为 `0.1.152`。
 - 已发布 `0.1.152-f84d96f7-20260713082542`、`v0.1.152` 与 `latest`。
 - 回滚方式：部署端回切 `ccr.ccs.tencentyun.com/apophis-chat/sub2api:v0.1.151`；代码层回退版本提交，不影响数据库和业务数据。
+
+## 2026-07-13 - Task: 修复上游余额不足错误处理回归
+
+### What was done
+- 恢复上游错误码解析对顶层 `code`、`detail.code` 及内嵌 JSON 同类字段的支持，修复 `INSUFFICIENT_BALANCE` 被普通 403 策略跳过的问题。
+- 统一余额不足错误文案生成，并让 OpenAI 管理员 Responses、Chat Completions、Compact 与图片测试入口在命中余额不足时将账号标记为错误且停止调度；普通 403、401 与 429 行为保持不变。
+- 扩展池模式、限流服务和管理员测试连接回归用例，覆盖顶层、嵌套、detail 与字符串内嵌错误格式。
+
+### Testing
+- 定向 TDD 回归测试：修复前按预期失败；修复后通过。
+- `GOCACHE="$PWD/.cache/go-build" go test -tags=unit ./internal/service -run 'TestRateLimitService_HandleUpstreamError_OpenAIInsufficientBalanceDisablesPoolModeAccount|TestShouldRetryPoolModeOnSameAccount_SkipsInsufficientBalance|TestAccountTestService_OpenAI(InsufficientBalanceSetsPermanentError|ChatCompletionsInsufficientBalanceSetsPermanentError|Ordinary403DoesNotSetPermanentError|401SetsPermanentErrorOnly|429PersistsSnapshotAndRateLimitState)' -count=1`：通过。
+- `GOCACHE="$PWD/.cache/go-build" go test ./...`：通过。
+- `GOCACHE="$PWD/.cache/go-build" go test -tags=unit ./internal/service -count=1`：余额相关测试通过；全量存在 2 个与本轮无关的既有失败，分别为流式错误 failover 断言与图片 reasoning effort 设置校验。
+- `golangci-lint run ./...`：未执行，当前环境未安装 `golangci-lint`。
+
+### Notes
+- `backend/internal/service/gateway_upstream_response.go`：仅补回上游拆分时遗漏的错误码解析分支，未回退或改写合并后的文件结构。
+- `backend/internal/service/upstream_insufficient_balance.go`、`ratelimit_service.go`：复用统一错误文案，保持正常网关的调度阻断行为。
+- `backend/internal/service/account_test_service.go`：各 OpenAI 管理员测试入口命中余额不足时复用同一逻辑写入专用错误状态。
+- `backend/internal/service/*_test.go`：新增多格式余额不足与普通 403 不误判测试。
+- 回滚方式：还原本条记录及上述 7 个后端文件的本轮增量；无需数据库迁移或配置回滚。

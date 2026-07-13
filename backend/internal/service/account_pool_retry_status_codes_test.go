@@ -212,6 +212,14 @@ func TestShouldRetryPoolModeOnSameAccount_SkipsInsufficientBalance(t *testing.T)
 			name: "newapi_insufficient_user_quota_code",
 			body: []byte(`{"error":{"message":"用户额度不足, 剩余额度: ＄-0.003692 (request id: 20260611051811537367248268d9d6dhOaW53P)","type":"new_api_error","param":"","code":"insufficient_user_quota"}}`),
 		},
+		{
+			name: "detail_insufficient_balance_code",
+			body: []byte(`{"detail":{"code":"INSUFFICIENT_BALANCE","message":"Insufficient account balance"}}`),
+		},
+		{
+			name: "embedded_top_level_insufficient_balance_code",
+			body: []byte(`{"error":{"message":"{\"code\":\"INSUFFICIENT_BALANCE\",\"message\":\"Insufficient account balance\"}"}}`),
+		},
 	}
 
 	for _, tt := range tests {

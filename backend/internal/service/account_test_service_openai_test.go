@@ -396,6 +396,104 @@ func TestAccountTestService_OpenAI401SetsPermanentErrorOnly(t *testing.T) {
 	require.Nil(t, account.RateLimitResetAt)
 }
 
+func TestAccountTestService_OpenAIInsufficientBalanceSetsPermanentError(t *testing.T) {
+	tests := []struct {
+		name string
+		body string
+	}{
+		{
+			name: "top_level_code",
+			body: `{"code":"INSUFFICIENT_BALANCE","message":"Insufficient account balance"}`,
+		},
+		{
+			name: "nested_error_code",
+			body: `{"error":{"code":"insufficient_user_quota","message":"用户额度不足"}}`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx, recorder := newTestContext()
+			repo := &openAIAccountTestRepo{}
+			upstream := &queuedHTTPUpstream{responses: []*http.Response{
+				newJSONResponse(http.StatusForbidden, tt.body),
+			}}
+			svc := &AccountTestService{accountRepo: repo, httpUpstream: upstream}
+			account := &Account{
+				ID:          82,
+				Platform:    PlatformOpenAI,
+				Type:        AccountTypeOAuth,
+				Status:      StatusActive,
+				Concurrency: 1,
+				Credentials: map[string]any{"access_token": "test-token"},
+			}
+
+			err := svc.testOpenAIAccountConnection(ctx, account, "gpt-5.4", "", "")
+
+			require.Error(t, err)
+			require.Equal(t, account.ID, repo.setErrorID)
+			require.Contains(t, repo.setErrorMsg, "Upstream no balance (INSUFFICIENT_BALANCE)")
+			require.Contains(t, repo.setErrorMsg, "status=403")
+			require.Contains(t, recorder.Body.String(), "API returned 403")
+			require.Zero(t, repo.rateLimitedID)
+		})
+	}
+}
+
+func TestAccountTestService_OpenAIChatCompletionsInsufficientBalanceSetsPermanentError(t *testing.T) {
+	ctx, recorder := newTestContext()
+	repo := &openAIAccountTestRepo{}
+	upstream := &queuedHTTPUpstream{responses: []*http.Response{
+		newJSONResponse(http.StatusForbidden, `{"code":"INSUFFICIENT_BALANCE","message":"Insufficient account balance"}`),
+	}}
+	svc := &AccountTestService{accountRepo: repo, httpUpstream: upstream}
+	account := &Account{
+		ID:          84,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Status:      StatusActive,
+		Concurrency: 1,
+	}
+
+	err := svc.testOpenAIChatCompletionsConnection(
+		ctx,
+		account,
+		"gpt-5.4",
+		"hello",
+		"https://compat-upstream.example/v1",
+		"sk-test",
+	)
+
+	require.Error(t, err)
+	require.Equal(t, account.ID, repo.setErrorID)
+	require.Contains(t, repo.setErrorMsg, "Upstream no balance (INSUFFICIENT_BALANCE)")
+	require.Contains(t, repo.setErrorMsg, "status=403")
+	require.Contains(t, recorder.Body.String(), "Chat Completions API")
+}
+
+func TestAccountTestService_OpenAIOrdinary403DoesNotSetPermanentError(t *testing.T) {
+	ctx, _ := newTestContext()
+	repo := &openAIAccountTestRepo{}
+	upstream := &queuedHTTPUpstream{responses: []*http.Response{
+		newJSONResponse(http.StatusForbidden, `{"error":{"code":"policy_denied","message":"forbidden"}}`),
+	}}
+	svc := &AccountTestService{accountRepo: repo, httpUpstream: upstream}
+	account := &Account{
+		ID:          83,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeOAuth,
+		Status:      StatusActive,
+		Concurrency: 1,
+		Credentials: map[string]any{"access_token": "test-token"},
+	}
+
+	err := svc.testOpenAIAccountConnection(ctx, account, "gpt-5.4", "", "")
+
+	require.Error(t, err)
+	require.Zero(t, repo.setErrorID)
+	require.Empty(t, repo.setErrorMsg)
+}
+
 func TestAccountTestService_OpenAIAPIKeyResponsesUnsupportedUsesChatCompletionsPath(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	ctx, recorder := newTestContext()
