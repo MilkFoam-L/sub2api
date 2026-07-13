@@ -955,3 +955,15 @@
 - `backend/internal/service/api_key_auth_cache_impl.go`：认证缓存快照版本更新为 v15。
 - `frontend/src/i18n/locales/{zh,en}/admin/settings.ts`：保留上游 Fast/Flex 邮箱搜索选择器文案并通过本地完整性门禁。
 - 回滚方式：使用 `git revert -m 1 <v0.1.152 merge commit>` 回退本次合并；不使用 reset 或 force push。
+
+## 2026-07-13 - Task: 注入 v0.1.152 运行时版本
+
+### What was done
+- 将服务端版本文件从上游遗留的 `0.1.151` 更新为发布版本 `0.1.152`，确保本地构建和未显式传参的发布流程使用正确版本。
+
+### Testing
+- 提交前复核版本文件；Docker 构建、运行验证和腾讯云远端 digest 将在本次发布流程中执行并记录。
+
+### Notes
+- `backend/cmd/server/VERSION`：更新为 `0.1.152`。
+- 回滚方式：回退本次版本提交；不影响数据库和业务数据。
