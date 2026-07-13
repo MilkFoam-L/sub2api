@@ -917,3 +917,23 @@
 - `Dockerfile`：保持未修改；`.cache/Dockerfile.no-buildkit` 为已忽略的本机临时构建文件。
 - 先推送可追溯标签和 `v0.1.151`，成功后才更新 `latest`。
 - 回滚方式：部署端可回切到上一版 `ccr.ccs.tencentyun.com/apophis-chat/sub2api:v0.1.150`（此前 manifest digest `sha256:b65a42505e72d66fc4c3e30435006149520fbf7146ccb92251ff5876dd4dec6e`）；代码层按需执行 `git revert`，禁止 force push。
+
+## 2026-07-13 - Task: 全面修复网站缺失国际化文案
+
+### What was done
+- 恢复账号数据导入的文件提示、分组标签与分组说明，并补齐账号、模型探测、个人资料、渠道、运维和系统设置等全站缺失的中英文文案。
+- 对齐中英文语言包叶子结构与插值占位符，补齐历史上仅存在于单一语言的文案。
+- 新增生产代码静态翻译键扫描门禁，防止后续功能合并后再次显示 `admin.*` 等原始键；修正导入测试将原始键误当成功结果的问题。
+
+### Testing
+- `pnpm test:run`：通过，154 个测试文件、1039 项测试。
+- `pnpm typecheck`：通过。
+- `pnpm lint:check`：通过。
+- `pnpm build`：通过；仅有既有动态/静态导入及大 chunk 警告。
+- `pnpm exec vitest run src/i18n/__tests__/localeCompleteness.spec.ts`：通过，覆盖静态引用完整性、动态键命名空间、双语叶子对称和插值占位符对称。
+
+### Notes
+- `frontend/src/i18n/locales/{zh,en}`：补齐全站缺失及不对称文案，未修改业务请求和导入 API。
+- `frontend/src/i18n/__tests__/localeCompleteness.spec.ts`：新增全站静态键与双语结构门禁；动态拼接键前缀不作为静态键误报。
+- `frontend/src/__tests__/integration/data-import.spec.ts`：使用严格文案字典，未知键直接失败，并断言用户可见导入文案。
+- 回滚方式：还原本轮语言包与测试文件增量，并删除本条 `progress.md` 记录；无需数据库或配置回滚。

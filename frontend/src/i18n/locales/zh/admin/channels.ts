@@ -54,6 +54,8 @@ export default {
       pricingUnit: '条定价',
       noChannelsYet: '暂无渠道',
       createFirstChannel: '创建第一个渠道来管理模型定价',
+      emptyModelsInPricing: '定价配置中暂无模型',
+      noGroupsSelected: '尚未选择分组',
       loadError: '加载渠道列表失败',
       createSuccess: '渠道创建成功',
       updateSuccess: '渠道更新成功',

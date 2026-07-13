@@ -23,18 +23,42 @@ vi.mock('@/api/admin', () => ({
   }
 }))
 
-vi.mock('vue-i18n', () => ({
-  useI18n: () => ({
-    t: (key: string, params?: Record<string, unknown>) => {
-      if (key === 'admin.accounts.selectedCount') {
-        return `selected ${params?.count}`
-      }
-      return key
-    }
-  })
-}))
-
 const importDataMock = vi.mocked(adminAPI.accounts.importData)
+
+const importTranslations: Record<string, string> = {
+  'admin.accounts.dataImportTitle': '导入数据',
+  'admin.accounts.dataImportHint': '上传导出的 JSON 文件以批量导入账号与代理。',
+  'admin.accounts.dataImportWarning': '导入将创建新账号与代理，分组需手工绑定；请确认已有数据不会冲突。',
+  'admin.accounts.dataImportFile': '数据文件',
+  'admin.accounts.dataImportSelectFile': '请选择数据文件',
+  'admin.accounts.dataImportFileHint': '支持多选 JSON 文件（.json）',
+  'admin.accounts.dataImportGroups': '导入账号分组',
+  'admin.accounts.dataImportGroupsHint': '仅显示 OpenAI 分组；导入成功的账号会自动绑定到选中分组。',
+  'admin.accounts.dataImportButton': '开始导入',
+  'admin.accounts.dataImporting': '导入中...',
+  'admin.accounts.dataImportParseFailedFile': '文件 {name} 解析失败',
+  'admin.accounts.dataImportInvalidFile': '文件 {name} 不是受支持的导出数据文件',
+  'admin.accounts.dataImportIgnoredFiles': '已忽略 {count} 个非 JSON 文件',
+  'admin.accounts.dataImportFailed': '数据导入失败',
+  'admin.accounts.dataImportResult': '导入结果',
+  'admin.accounts.dataImportResultSummary': '代理创建 {proxy_created}，复用 {proxy_reused}，失败 {proxy_failed}；账号创建 {account_created}，失败 {account_failed}',
+  'admin.accounts.dataImportErrors': '失败详情',
+  'admin.accounts.dataImportSuccess': '导入完成：账号 {account_created}，失败 {account_failed}',
+  'admin.accounts.dataImportCompletedWithErrors': '导入完成但有错误：账号失败 {account_failed}，代理失败 {proxy_failed}',
+  'admin.accounts.selectedCount': '已选 {count}',
+  'common.chooseFile': '选择文件',
+  'common.cancel': '取消'
+}
+
+const t = (key: string, params: Record<string, unknown> = {}) => {
+  const message = importTranslations[key]
+  if (!message) throw new Error(`Missing test translation: ${key}`)
+  return message.replace(/\{(\w+)\}/g, (_match, name: string) => String(params[name] ?? `{${name}}`))
+}
+
+vi.mock('vue-i18n', () => ({
+  useI18n: () => ({ t })
+}))
 
 const importGroups = [
   {
@@ -139,7 +163,7 @@ describe('ImportDataModal', () => {
     const wrapper = mountModal()
 
     await wrapper.find('form').trigger('submit')
-    expect(showError).toHaveBeenCalledWith('admin.accounts.dataImportSelectFile')
+    expect(showError).toHaveBeenCalledWith(t('admin.accounts.dataImportSelectFile'))
   })
 
   it('无效 JSON 时按文件名提示解析失败', async () => {
@@ -152,7 +176,7 @@ describe('ImportDataModal', () => {
     await wrapper.find('form').trigger('submit')
     await flushPromises()
 
-    expect(showError).toHaveBeenCalledWith('admin.accounts.dataImportParseFailedFile')
+    expect(showError).toHaveBeenCalledWith(t('admin.accounts.dataImportParseFailedFile', { name: 'data.json' }))
     expect(importDataMock).not.toHaveBeenCalled()
   })
 
@@ -166,7 +190,7 @@ describe('ImportDataModal', () => {
     await wrapper.find('form').trigger('submit')
     await flushPromises()
 
-    expect(showError).toHaveBeenCalledWith('admin.accounts.dataImportInvalidFile')
+    expect(showError).toHaveBeenCalledWith(t('admin.accounts.dataImportInvalidFile', { name: 'random.json' }))
     expect(importDataMock).not.toHaveBeenCalled()
   })
 
@@ -192,7 +216,7 @@ describe('ImportDataModal', () => {
 
     setInputFiles(input.element, [new File(['hello'], 'notes.txt', { type: 'text/plain' })])
     await input.trigger('change')
-    expect(showError).toHaveBeenCalledWith('admin.accounts.dataImportSelectFile')
+    expect(showError).toHaveBeenCalledWith(t('admin.accounts.dataImportSelectFile'))
 
     await wrapper.find('form').trigger('submit')
     await flushPromises()
@@ -233,7 +257,7 @@ describe('ImportDataModal', () => {
     setInputFiles(input.element, [first, second])
 
     await input.trigger('change')
-    expect(wrapper.text()).toContain('selected 2')
+    expect(wrapper.text()).toContain(t('admin.accounts.selectedCount', { count: 2 }))
 
     await wrapper.find('form').trigger('submit')
     await flushPromises()
@@ -247,7 +271,9 @@ describe('ImportDataModal', () => {
       skip_default_group_bind: true,
       group_ids: []
     })
-    expect(showSuccess).toHaveBeenCalledWith('admin.accounts.dataImportSuccess')
+    expect(showSuccess).toHaveBeenCalledWith(
+      t('admin.accounts.dataImportSuccess', { account_created: 2, account_failed: 0 })
+    )
   })
 
   it('部分成功时关闭弹窗仍通知父组件刷新', async () => {
@@ -277,7 +303,9 @@ describe('ImportDataModal', () => {
     await wrapper.find('form').trigger('submit')
     await flushPromises()
 
-    expect(showError).toHaveBeenCalledWith('admin.accounts.dataImportCompletedWithErrors')
+    expect(showError).toHaveBeenCalledWith(
+      t('admin.accounts.dataImportCompletedWithErrors', { account_failed: 1, proxy_failed: 0 })
+    )
     expect(wrapper.emitted('imported')).toBeUndefined()
 
     await wrapper.findAll('button.btn-secondary')[1]!.trigger('click')
@@ -289,8 +317,10 @@ describe('ImportDataModal', () => {
   it('导入分组选择器只显示 OpenAI 分组并使用导入专用文案', () => {
     const wrapper = mountModal()
 
-    expect(wrapper.text()).toContain('admin.accounts.dataImportGroups')
-    expect(wrapper.text()).toContain('admin.accounts.dataImportGroupsHint')
+    expect(wrapper.text()).toContain(t('admin.accounts.dataImportFileHint'))
+    expect(wrapper.text()).toContain(t('admin.accounts.dataImportGroups'))
+    expect(wrapper.text()).toContain(t('admin.accounts.dataImportGroupsHint'))
+    expect(wrapper.text()).not.toContain('admin.accounts.dataImport')
     expect(wrapper.text()).toContain('openai-default')
     expect(wrapper.text()).toContain('openai-plus')
     expect(wrapper.text()).not.toContain('claude-default')
