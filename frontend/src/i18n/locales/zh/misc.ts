@@ -490,7 +490,6 @@ export default {
     perMonth: '月',
     perYear: '年',
     admin: {
-      allowUserRefund: '允许用户退款',
       tabs: {
         overview: '概览',
         orders: '订单管理',
@@ -536,6 +535,7 @@ export default {
       queryRefundStatus: '查询退款状态',
       refundInfo: '退款信息',
       refundEnabled: '允许退款',
+      allowUserRefund: '允许用户退款',
       alreadyRefunded: '已退款',
       deductBalance: '扣除余额',
       deductBalanceHint: '从用户余额中扣回充值金额',

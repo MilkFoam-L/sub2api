@@ -992,3 +992,25 @@
 - `backend/internal/service/account_test_service.go`：各 OpenAI 管理员测试入口命中余额不足时复用同一逻辑写入专用错误状态。
 - `backend/internal/service/*_test.go`：新增多格式余额不足与普通 403 不误判测试。
 - 回滚方式：还原本条记录及上述 7 个后端文件的本轮增量；无需数据库迁移或配置回滚。
+
+## 2026-07-13 - Task: 合并上游 v0.1.153
+
+### What was done
+- 将上游正式 Release `v0.1.153`（tag commit `a2bc1337`）合入本地 `main`，引入 Grok 视频编辑/延长、Apple 容器部署、OpenAI 订阅档位覆盖、调度与用量统计等上游修复。
+- 解决中文管理概览文案冲突，并修正自动合并产生的 `claudeMaxSimulation` 错误嵌套和 `allowUserRefund` 重复键；保留本地中文文案及完整性门禁。
+- 完整保留本地 OpenAI 上游余额不足解析、账号阻断、管理员测试连接状态写入及其回归测试。
+- 将运行时版本文件同步为 `0.1.153`，确保后续本地及 Docker 构建使用正确版本。
+
+### Testing
+- `GOCACHE="$PWD/.cache/go-build" go test ./...`：通过。
+- 余额不足专项 unit 回归测试：通过。
+- `pnpm test:run`：通过，159 个测试文件、1083 项测试。
+- `pnpm typecheck && pnpm lint:check`：通过。
+- i18n 完整性与重复键专项测试：12 项通过。
+- `pnpm build`：通过；仅有既有动态/静态导入与大 chunk 警告。
+
+### Notes
+- `frontend/src/i18n/locales/zh/admin/overview.ts`：冲突采用本地自然中文表达，同时保留上游其他新增内容。
+- `frontend/src/i18n/locales/zh/misc.ts`：移除自动合并后的同名重复键，保留与英文一致的正确层级。
+- `backend/cmd/server/VERSION`：从 `0.1.152` 更新为 `0.1.153`。
+- 回滚方式：使用 `git revert -m 1 <本次 v0.1.153 merge commit>` 回退合并；迁移 `174_add_usage_logs_api_key_latest_ip_index_notx.sql` 仅新增索引，部署前回滚不涉及数据库。
