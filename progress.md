@@ -962,8 +962,12 @@
 - 将服务端版本文件从上游遗留的 `0.1.151` 更新为发布版本 `0.1.152`，确保本地构建和未显式传参的发布流程使用正确版本。
 
 ### Testing
-- 提交前复核版本文件；Docker 构建、运行验证和腾讯云远端 digest 将在本次发布流程中执行并记录。
+- Docker 多阶段生产构建通过；本机缺少 buildx，使用已忽略的 `.cache/Dockerfile.no-buildkit` 移除 BuildKit cache mount，正式 `Dockerfile` 未修改。
+- 镜像运行时输出 `Sub2API 0.1.152 (commit: f84d96f7, built: 2026-07-13T08:25:42Z)`。
+- 镜像为 `linux/amd64`，包含 `/app/resources`、`psql 18.4`、`pg_dump 18.4` 和非 root 用户 `sub2api`。
+- 三个腾讯云标签的远端 manifest digest 一致：`sha256:d7a5f26cde3cc905b77d1866677de81c7e474b00896dfdfdd5928101756c2518`。
 
 ### Notes
 - `backend/cmd/server/VERSION`：更新为 `0.1.152`。
-- 回滚方式：回退本次版本提交；不影响数据库和业务数据。
+- 已发布 `0.1.152-f84d96f7-20260713082542`、`v0.1.152` 与 `latest`。
+- 回滚方式：部署端回切 `ccr.ccs.tencentyun.com/apophis-chat/sub2api:v0.1.151`；代码层回退版本提交，不影响数据库和业务数据。
