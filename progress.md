@@ -937,3 +937,21 @@
 - `frontend/src/i18n/__tests__/localeCompleteness.spec.ts`：新增全站静态键与双语结构门禁；动态拼接键前缀不作为静态键误报。
 - `frontend/src/__tests__/integration/data-import.spec.ts`：使用严格文案字典，未知键直接失败，并断言用户可见导入文案。
 - 回滚方式：还原本轮语言包与测试文件增量，并删除本条 `progress.md` 记录；无需数据库或配置回滚。
+
+## 2026-07-13 - Task: 合并上游 v0.1.152
+
+### What was done
+- 将上游 `v0.1.152` 合入本地 `main`，保留本地全站 i18n 完整性修复与自动检查。
+- 解决 API Key 认证缓存快照版本及 Fast/Flex 用户搜索文案冲突，采用 v0.1.152 的缓存 v15 与邮箱搜索选择器实现。
+- 引入上游 writer 生命周期防护、Codex/Grok 路由与协议兼容、缓存用量、网页搜索按次计费等修复。
+
+### Testing
+- `GOCACHE="C:/Users/MilkFoam/Desktop/AI/sub2api/.gocache" go test ./...`：通过。
+- `pnpm test:run`：通过，157 个测试文件、1060 项测试。
+- `pnpm typecheck && pnpm lint:check`：通过。
+- i18n 完整性与 OpenAI Fast/Flex 文案专项测试：8 项通过。
+
+### Notes
+- `backend/internal/service/api_key_auth_cache_impl.go`：认证缓存快照版本更新为 v15。
+- `frontend/src/i18n/locales/{zh,en}/admin/settings.ts`：保留上游 Fast/Flex 邮箱搜索选择器文案并通过本地完整性门禁。
+- 回滚方式：使用 `git revert -m 1 <v0.1.152 merge commit>` 回退本次合并；不使用 reset 或 force push。
