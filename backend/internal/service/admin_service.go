@@ -67,6 +67,12 @@ type AdminService interface {
 	GetAccount(ctx context.Context, id int64) (*Account, error)
 	GetAccountsByIDs(ctx context.Context, ids []int64) ([]*Account, error)
 	CreateAccount(ctx context.Context, input *CreateAccountInput) (*Account, error)
+	// DuplicateAccount creates an independent account from an existing account's configuration.
+	// First-class runtime columns are intentionally reset by the normal account creation path.
+	DuplicateAccount(ctx context.Context, id int64, actorScope, operationKey string) (*Account, error)
+	// RecoverDuplicateAccount returns a previously committed duplicate for an ambiguous retry.
+	// It never creates an account.
+	RecoverDuplicateAccount(ctx context.Context, id int64, actorScope, operationKey string) (*Account, error)
 	UpdateAccount(ctx context.Context, id int64, input *UpdateAccountInput) (*Account, error)
 	// SetOpenAITeam401Retryable 仅修改 credentials.openai_team_401_retryable 单键，避免全量覆盖脱敏凭据。
 	SetOpenAITeam401Retryable(ctx context.Context, id int64, enabled bool) (*Account, error)
@@ -589,6 +595,7 @@ type adminServiceImpl struct {
 	userRepo             UserRepository
 	groupRepo            GroupRepository
 	accountRepo          AccountRepository
+	accountDuplicateRepo AccountDuplicateRepository
 	proxyRepo            ProxyRepository
 	apiKeyRepo           APIKeyRepository
 	redeemCodeRepo       RedeemCodeRepository
@@ -614,7 +621,7 @@ type userGroupRateBatchReader interface {
 func NewAdminService(
 	userRepo UserRepository,
 	groupRepo GroupRepository,
-	accountRepo AccountRepository,
+	accountRepo AdminAccountRepository,
 	proxyRepo ProxyRepository,
 	apiKeyRepo APIKeyRepository,
 	redeemCodeRepo RedeemCodeRepository,
@@ -635,6 +642,7 @@ func NewAdminService(
 		userRepo:             userRepo,
 		groupRepo:            groupRepo,
 		accountRepo:          accountRepo,
+		accountDuplicateRepo: accountRepo,
 		proxyRepo:            proxyRepo,
 		apiKeyRepo:           apiKeyRepo,
 		redeemCodeRepo:       redeemCodeRepo,
