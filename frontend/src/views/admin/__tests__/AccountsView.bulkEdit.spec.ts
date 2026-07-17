@@ -9,14 +9,16 @@ const {
   getBatchTodayStats,
   getAllProxies,
   getAllGroups,
-  bulkDeleteAccounts
+  bulkDeleteAccounts,
+  probeUpstreamBillingBatch
 } = vi.hoisted(() => ({
   listAccounts: vi.fn(),
   listWithEtag: vi.fn(),
   getBatchTodayStats: vi.fn(),
   getAllProxies: vi.fn(),
   getAllGroups: vi.fn(),
-  bulkDeleteAccounts: vi.fn()
+  bulkDeleteAccounts: vi.fn(),
+  probeUpstreamBillingBatch: vi.fn()
 }))
 
 vi.mock('@/api/admin', () => ({
@@ -25,10 +27,12 @@ vi.mock('@/api/admin', () => ({
       list: listAccounts,
       listWithEtag,
       getBatchTodayStats,
+      getUpstreamBillingProbeSettings: vi.fn().mockResolvedValue({ enabled: true, interval_minutes: 30 }),
       delete: vi.fn(),
       bulkDelete: bulkDeleteAccounts,
       batchClearError: vi.fn(),
       batchRefresh: vi.fn(),
+      probeUpstreamBillingBatch,
       toggleSchedulable: vi.fn()
     },
     proxies: {
@@ -70,6 +74,7 @@ const DataTableStub = {
     <div data-test="data-table">
       <span v-for="column in columns" :key="column.key" data-test="column-key">{{ column.key }}</span>
       <div v-for="row in data" :key="row.id">
+        <div data-test="select-row"><slot name="cell-select" :row="row" /></div>
         <slot name="cell-created_at" :value="row.created_at" :row="row" />
       </div>
     </div>
@@ -78,13 +83,19 @@ const DataTableStub = {
 
 const AccountBulkActionsBarStub = {
   props: ['selectedIds'],
-  emits: ['edit-filtered', 'delete-filtered'],
+  emits: ['edit-filtered', 'delete-filtered', 'probe-upstream-billing'],
   template: `
     <div>
       <button data-test="delete-filtered" @click="$emit('delete-filtered')">delete filtered</button>
       <button data-test="edit-filtered" @click="$emit('edit-filtered')">edit filtered</button>
+      <button data-test="probe-upstream-billing" @click="$emit('probe-upstream-billing')">probe</button>
     </div>
   `
+}
+
+const PaginationStub = {
+  emits: ['update:page'],
+  template: '<button data-test="next-page" @click="$emit(\'update:page\', 2)">next</button>'
 }
 
 const BulkEditAccountModalStub = {
@@ -112,6 +123,7 @@ describe('admin AccountsView bulk edit scope', () => {
     getAllProxies.mockReset()
     getAllGroups.mockReset()
     bulkDeleteAccounts.mockReset()
+    probeUpstreamBillingBatch.mockReset()
 
     listAccounts.mockResolvedValue({
       items: [],
@@ -129,6 +141,7 @@ describe('admin AccountsView bulk edit scope', () => {
     getAllProxies.mockResolvedValue([])
     getAllGroups.mockResolvedValue([])
     bulkDeleteAccounts.mockResolvedValue({ success: 2, failed: 0, success_ids: [7, 11], failed_ids: [], results: [] })
+    probeUpstreamBillingBatch.mockResolvedValue([])
   })
 
   it('opens bulk edit in filtered-results mode from the bulk actions dropdown', async () => {
@@ -498,5 +511,72 @@ describe('admin AccountsView bulk edit scope', () => {
       label: 'admin.accounts.columns.createdAt',
       sortable: true
     })
+  })
+
+  it('submits selected account IDs from every page for backend eligibility checks', async () => {
+    const account = (id: number) => ({
+      id,
+      name: `account-${id}`,
+      platform: 'openai',
+      type: 'apikey',
+      status: 'active',
+      schedulable: true,
+      created_at: '2026-07-13T00:00:00Z',
+      updated_at: '2026-07-13T00:00:00Z'
+    })
+    listAccounts.mockImplementation((page: number) => Promise.resolve(
+      page === 2
+        ? { items: [account(11)], total: 2, page: 2, page_size: 1, pages: 2 }
+        : { items: [account(7)], total: 2, page: 1, page_size: 1, pages: 2 }
+    ))
+
+    const wrapper = mount(AccountsView, {
+      global: {
+        stubs: {
+          AppLayout: { template: '<div><slot /></div>' },
+          TablePageLayout: { template: '<div><slot name="table" /><slot name="pagination" /></div>' },
+          DataTable: DataTableStub,
+          Pagination: PaginationStub,
+          ConfirmDialog: true,
+          AccountTableActions: true,
+          AccountTableFilters: true,
+          AccountBulkActionsBar: AccountBulkActionsBarStub,
+          AccountActionMenu: true,
+          ImportDataModal: true,
+          ReAuthAccountModal: true,
+          AccountTestModal: true,
+          AccountStatsModal: true,
+          ScheduledTestsPanel: true,
+          SyncFromCrsModal: true,
+          TempUnschedStatusModal: true,
+          ErrorPassthroughRulesModal: true,
+          TLSFingerprintProfilesModal: true,
+          CreateAccountModal: true,
+          EditAccountModal: true,
+          BulkEditAccountModal: BulkEditAccountModalStub,
+          PlatformTypeBadge: true,
+          AccountCapacityCell: true,
+          AccountStatusIndicator: true,
+          AccountTodayStatsCell: true,
+          AccountGroupsCell: true,
+          AccountUsageCell: true,
+          Icon: true
+        }
+      }
+    })
+
+    await vi.waitFor(() => {
+      expect((wrapper.getComponent(DataTableStub).props('data') as Array<{ id: number }>).map(item => item.id)).toEqual([7])
+    })
+    await wrapper.get('[data-test="select-row"] input').trigger('change')
+    await wrapper.get('[data-test="next-page"]').trigger('click')
+    await vi.waitFor(() => {
+      expect((wrapper.getComponent(DataTableStub).props('data') as Array<{ id: number }>).map(item => item.id)).toEqual([11])
+    })
+    await wrapper.get('[data-test="select-row"] input').trigger('change')
+    await wrapper.get('[data-test="probe-upstream-billing"]').trigger('click')
+    await flushPromises()
+
+    expect(probeUpstreamBillingBatch).toHaveBeenCalledWith([7, 11])
   })
 })
