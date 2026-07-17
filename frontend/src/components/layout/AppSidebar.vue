@@ -760,7 +760,7 @@ function customMenuToNavItem(item: CustomMenuItem): NavItem {
   const url = item.url ?? ''
   const isHttp = /^https?:\/\//i.test(url)
   if ((mode === 'redirect' || mode === 'newtab') && isHttp) {
-    const withParams = item.with_user_params !== false
+    const withParams = item.with_user_params === true
     return {
       path: `/custom/${item.id}`,
       label: item.label,
@@ -770,7 +770,6 @@ function customMenuToNavItem(item: CustomMenuItem): NavItem {
         ? buildEmbeddedUrl(
             url,
             authStore.user?.id,
-            authStore.token,
             isDark.value ? 'dark' : 'light',
             locale.value,
           )

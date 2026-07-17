@@ -216,7 +216,12 @@ func (h *TotpHandler) StepUp(c *gin.Context) {
 		return
 	}
 
-	sessionKey := middleware2.StepUpSessionKey(c, subject.UserID)
+	sessionKey := middleware2.StepUpSessionKey(c)
+	if sessionKey == "" {
+		middleware2.AbortWithError(c, 401, "STEP_UP_SESSION_REQUIRED",
+			"A current authenticated session is required; refresh the session or sign in again")
+		return
+	}
 	ttl, err := h.totpService.VerifyStepUp(c.Request.Context(), subject.UserID, sessionKey, req.Code)
 	if err != nil {
 		response.ErrorFrom(c, err)

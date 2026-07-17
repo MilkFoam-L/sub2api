@@ -5694,7 +5694,7 @@
                         {{ t("admin.settings.customMenu.withUserParams") }}
                       </label>
                       <Toggle
-                        :model-value="item.with_user_params !== false"
+                        :model-value="item.with_user_params === true"
                         @update:model-value="(v: boolean) => (item.with_user_params = v)"
                       />
                     </div>
@@ -7539,6 +7539,7 @@
         @confirm="handleAffiliateConfirm"
         @cancel="cancelAffiliateConfirm"
       />
+      <TotpStepUpDialog :controller="adminApiKeyStepUp" />
     </div>
   </AppLayout>
 </template>
@@ -7582,6 +7583,7 @@ import AppLayout from "@/components/layout/AppLayout.vue";
 import Icon from "@/components/icons/Icon.vue";
 import Select from "@/components/common/Select.vue";
 import ConfirmDialog from "@/components/common/ConfirmDialog.vue";
+import TotpStepUpDialog from "@/components/auth/TotpStepUpDialog.vue";
 import PaymentProviderList from "@/components/payment/PaymentProviderList.vue";
 import PaymentProviderDialog from "@/components/payment/PaymentProviderDialog.vue";
 import GroupBadge from "@/components/common/GroupBadge.vue";
@@ -7593,6 +7595,7 @@ import BackupSettings from "@/views/admin/BackupView.vue";
 import EmailTemplateEditor from "@/views/admin/settings/EmailTemplateEditor.vue";
 import OpenAIFastPolicyUserSelector from "@/views/admin/settings/OpenAIFastPolicyUserSelector.vue";
 import { useClipboard } from "@/composables/useClipboard";
+import { isStepUpCancelled, useStepUp } from "@/composables/useStepUp";
 import { affiliatesAPI, type AffiliateAdminEntry, type SimpleUser as AffiliateSimpleUser } from "@/api/admin/affiliates";
 import { extractApiErrorMessage, extractI18nErrorMessage } from "@/utils/apiError";
 import { useAppStore } from "@/stores";
@@ -7614,6 +7617,7 @@ import {
 const { t, locale } = useI18n();
 const appStore = useAppStore();
 const adminSettingsStore = useAdminSettingsStore();
+const adminApiKeyStepUp = useStepUp();
 const isZhLocale = computed(() => locale.value.startsWith("zh"));
 
 function localText(zh: string, en: string): string {
@@ -9086,7 +9090,7 @@ function addMenuItem() {
     url: "",
     visibility: "user",
     open_mode: "embed",
-    with_user_params: true,
+    with_user_params: false,
     sort_order: form.custom_menu_items.length,
   });
 }
@@ -9317,8 +9321,8 @@ async function loadSettings() {
         if (item.open_mode !== "redirect" && item.open_mode !== "newtab") {
           item.open_mode = "embed";
         }
-        // Legacy items without the flag default to carrying user params.
-        item.with_user_params = item.with_user_params !== false;
+        // Legacy items default to not exposing user context to external URLs.
+        item.with_user_params = item.with_user_params === true;
       });
     }
     form.default_platform_quotas = normalizePlatformQuotasMap(settings.default_platform_quotas);
@@ -10112,14 +10116,16 @@ async function loadAdminApiKey() {
 async function createAdminApiKey() {
   adminApiKeyOperating.value = true;
   try {
-    const result = await adminAPI.settings.regenerateAdminApiKey();
+    const result = await adminApiKeyStepUp.run(() => adminAPI.settings.regenerateAdminApiKey());
     newAdminApiKey.value = result.key;
     adminApiKeyExists.value = true;
     adminApiKeyMasked.value =
       result.key.substring(0, 10) + "..." + result.key.slice(-4);
     appStore.showSuccess(t("admin.settings.adminApiKey.keyGenerated"));
   } catch (error: unknown) {
-    appStore.showError(extractApiErrorMessage(error, t("common.error")));
+    if (!isStepUpCancelled(error)) {
+      appStore.showError(extractApiErrorMessage(error, t("common.error")));
+    }
   } finally {
     adminApiKeyOperating.value = false;
   }
@@ -10134,13 +10140,15 @@ async function deleteAdminApiKey() {
   if (!confirm(t("admin.settings.adminApiKey.deleteConfirm"))) return;
   adminApiKeyOperating.value = true;
   try {
-    await adminAPI.settings.deleteAdminApiKey();
+    await adminApiKeyStepUp.run(() => adminAPI.settings.deleteAdminApiKey());
     adminApiKeyExists.value = false;
     adminApiKeyMasked.value = "";
     newAdminApiKey.value = "";
     appStore.showSuccess(t("admin.settings.adminApiKey.keyDeleted"));
   } catch (error: unknown) {
-    appStore.showError(extractApiErrorMessage(error, t("common.error")));
+    if (!isStepUpCancelled(error)) {
+      appStore.showError(extractApiErrorMessage(error, t("common.error")));
+    }
   } finally {
     adminApiKeyOperating.value = false;
   }

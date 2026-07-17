@@ -522,7 +522,7 @@ export default {
         openModeRedirect: '当前页面跳转',
         openModeNewTab: '新标签页打开',
         withUserParams: '携带用户参数',
-        withUserParamsHint: '开启后会将当前用户信息作为查询参数附加到页面 URL。',
+        withUserParamsHint: '默认关闭。开启后仅附加用户 ID、主题和语言等非敏感信息，不会携带登录令牌。',
         add: '添加菜单项',
         remove: '删除',
         moveUp: '上移',

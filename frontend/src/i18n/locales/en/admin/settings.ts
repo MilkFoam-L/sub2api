@@ -527,7 +527,7 @@ export default {
         openModeRedirect: 'Redirect in Current Tab',
         openModeNewTab: 'Open in New Tab',
         withUserParams: 'Include User Parameters',
-        withUserParamsHint: 'Append the current user information to the page URL as query parameters.',
+        withUserParamsHint: 'Off by default. Appends only non-sensitive context such as user ID, theme, and language; login tokens are never included.',
         add: 'Add Menu Item',
         remove: 'Remove',
         moveUp: 'Move Up',

@@ -2,7 +2,6 @@ package middleware
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
@@ -22,13 +21,10 @@ type stepUpUserReader interface {
 	GetByID(ctx context.Context, id int64) (*service.User, error)
 }
 
-// StepUpSessionKey 计算 step-up 授权的会话键：
-// 优先绑定当前会话（refresh token family），无会话 ID 的旧 token 退化为用户级键。
-func StepUpSessionKey(c *gin.Context, userID int64) string {
-	if sid := c.GetString(ContextKeySessionID); sid != "" {
-		return sid
-	}
-	return fmt.Sprintf("u%d", userID)
+// StepUpSessionKey 返回绑定当前 refresh token family 的会话键。
+// 缺少 sid 的旧 token 不允许创建或复用 step-up grant，避免不同会话共享提权窗口。
+func StepUpSessionKey(c *gin.Context) string {
+	return c.GetString(ContextKeySessionID)
 }
 
 // NewStepUpAuthMiddleware 创建敏感操作 step-up 2FA 门控中间件。
@@ -83,7 +79,12 @@ func enforceStepUp(c *gin.Context, grantChecker stepUpGrantChecker, userReader s
 		return false
 	}
 
-	sessionKey := StepUpSessionKey(c, subject.UserID)
+	sessionKey := StepUpSessionKey(c)
+	if sessionKey == "" {
+		AbortWithError(c, 401, "STEP_UP_SESSION_REQUIRED",
+			"A current authenticated session is required; refresh the session or sign in again")
+		return false
+	}
 	granted, err := grantChecker.HasStepUpGrant(c.Request.Context(), subject.UserID, sessionKey)
 	if err != nil {
 		// 安全门控故障时选择 fail-closed。
