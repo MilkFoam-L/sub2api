@@ -1,5 +1,5 @@
 <template>
-  <div class="mb-4 flex items-center justify-between rounded-lg bg-primary-50 p-3 dark:bg-primary-900/20">
+  <div class="mb-4 flex flex-col gap-3 rounded-lg bg-primary-50 p-3 sm:flex-row sm:items-center sm:justify-between dark:bg-primary-900/20">
     <div class="flex flex-wrap items-center gap-2">
       <span v-if="selectedIds.length > 0" class="text-sm font-medium text-primary-900 dark:text-primary-100">
         {{ t('admin.accounts.bulkActions.selected', { count: selectedIds.length }) }}
@@ -23,9 +23,9 @@
       </button>
       </template>
     </div>
-    <div class="flex gap-2">
+    <div data-test="selected-actions" class="flex flex-wrap gap-2 sm:justify-end">
       <template v-if="selectedIds.length > 0">
-        <button @click="$emit('delete')" class="btn btn-danger btn-sm">{{ t('admin.accounts.bulkActions.delete') }}</button>
+        <button data-test="selected-delete" @click="$emit('delete')" class="btn btn-danger btn-sm">{{ t('admin.accounts.bulkActions.delete') }}</button>
         <button @click="$emit('reset-status')" class="btn btn-secondary btn-sm">{{ t('admin.accounts.bulkActions.resetStatus') }}</button>
         <button @click="$emit('refresh-token')" class="btn btn-secondary btn-sm">{{ t('admin.accounts.bulkActions.refreshToken') }}</button>
         <button @click="$emit('probe-upstream-billing')" class="btn btn-secondary btn-sm">{{ t('admin.accounts.bulkActions.probeUpstreamBilling') }}</button>
@@ -33,12 +33,14 @@
         <button @click="$emit('toggle-schedulable', false)" class="btn btn-warning btn-sm">{{ t('admin.accounts.bulkActions.disableScheduling') }}</button>
         <button @click="$emit('edit-selected')" class="btn btn-primary btn-sm">{{ t('admin.accounts.bulkActions.edit') }}</button>
       </template>
-      <button @click="$emit('delete-filtered')" class="btn btn-danger btn-sm">
-        {{ t('admin.accounts.bulkDeleteFilteredButton') }}
-      </button>
-      <button @click="$emit('edit-filtered')" class="btn btn-primary btn-sm">
-        {{ t('admin.accounts.bulkEdit.submit') }}
-      </button>
+      <template v-else>
+        <button data-test="filtered-delete" @click="$emit('delete-filtered')" class="btn btn-danger btn-sm">
+          {{ t('admin.accounts.bulkDeleteFilteredButton') }}
+        </button>
+        <button data-test="filtered-edit" @click="$emit('edit-filtered')" class="btn btn-primary btn-sm">
+          {{ t('admin.accounts.bulkEdit.submit') }}
+        </button>
+      </template>
     </div>
   </div>
 </template>
