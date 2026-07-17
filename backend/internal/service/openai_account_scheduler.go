@@ -781,6 +781,19 @@ func buildOpenAIWeightedSelectionOrder(
 		return append([]openAIAccountCandidateScore(nil), candidates...)
 	}
 
+	maxScoreByPriority := make(map[int]float64)
+	hasFiniteScoreByPriority := make(map[int]bool)
+	for _, candidate := range candidates {
+		if candidate.account == nil || math.IsNaN(candidate.score) || math.IsInf(candidate.score, 0) {
+			continue
+		}
+		priority := candidate.account.Priority
+		if !hasFiniteScoreByPriority[priority] || candidate.score > maxScoreByPriority[priority] {
+			maxScoreByPriority[priority] = candidate.score
+			hasFiniteScoreByPriority[priority] = true
+		}
+	}
+
 	items := make([]accountWithLoad, 0, len(candidates))
 	debts := make(map[int64]int, len(candidates))
 	byID := make(map[int64]openAIAccountCandidateScore, len(candidates))
@@ -788,7 +801,12 @@ func buildOpenAIWeightedSelectionOrder(
 		if candidate.account == nil {
 			continue
 		}
-		items = append(items, accountWithLoad{account: candidate.account, loadInfo: candidate.loadInfo})
+		priority := candidate.account.Priority
+		items = append(items, accountWithLoad{
+			account:               candidate.account,
+			loadInfo:              candidate.loadInfo,
+			selectionScorePenalty: openAISelectionScorePenalty(candidate.score, maxScoreByPriority[priority], hasFiniteScoreByPriority[priority], cfg),
+		})
 		debts[candidate.account.ID] = candidate.selectionDebt
 		byID[candidate.account.ID] = candidate
 	}
@@ -800,6 +818,17 @@ func buildOpenAIWeightedSelectionOrder(
 		}
 	}
 	return order
+}
+
+func openAISelectionScorePenalty(score, maxScore float64, hasFiniteScore bool, cfg config.GatewaySchedulingConfig) float64 {
+	if !hasFiniteScore {
+		return 0
+	}
+	cfg = normalizeGatewaySchedulingConfig(cfg)
+	if math.IsNaN(score) || math.IsInf(score, 0) {
+		return cfg.MaxScorePenalty
+	}
+	return schedulerCapPenalty(maxScore-score, cfg.MaxScorePenalty)
 }
 
 func candidatePreferOAuth(candidates []openAIAccountCandidateScore) bool {

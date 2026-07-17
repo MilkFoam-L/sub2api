@@ -2906,6 +2906,88 @@ func TestBuildOpenAIWeightedSelectionOrder_DeterministicBySessionSeed(t *testing
 	require.Len(t, seen, len(candidates))
 }
 
+func TestBuildOpenAIWeightedSelectionOrder_PreservesAdvancedScoreWithinP2C(t *testing.T) {
+	candidates := []openAIAccountCandidateScore{
+		{
+			account:  &Account{ID: 201, Priority: 0, Concurrency: 1},
+			loadInfo: &AccountLoadInfo{AccountID: 201},
+			score:    8,
+		},
+		{
+			account:  &Account{ID: 202, Priority: 0, Concurrency: 1},
+			loadInfo: &AccountLoadInfo{AccountID: 202},
+			score:    2,
+		},
+	}
+
+	order := buildOpenAIWeightedSelectionOrder(candidates, config.GatewaySchedulingConfig{
+		Algorithm:       config.GatewaySchedulingAlgorithmWeightedP2C,
+		P2CChoiceCount:  2,
+		MaxScorePenalty: 5,
+	})
+
+	require.Len(t, order, 2)
+	require.Equal(t, int64(201), order[0].account.ID)
+}
+
+func TestBuildOpenAIWeightedSelectionOrder_NormalizesScoreWithinHardPriorityLayer(t *testing.T) {
+	candidates := []openAIAccountCandidateScore{
+		{
+			account:  &Account{ID: 211, Priority: 0, Concurrency: 1},
+			loadInfo: &AccountLoadInfo{AccountID: 211},
+			score:    100,
+		},
+		{
+			account:  &Account{ID: 212, Priority: 1, Concurrency: 1},
+			loadInfo: &AccountLoadInfo{AccountID: 212},
+			score:    10,
+		},
+		{
+			account:  &Account{ID: 213, Priority: 1, Concurrency: 1},
+			loadInfo: &AccountLoadInfo{AccountID: 213},
+			score:    5,
+		},
+	}
+
+	order := buildOpenAIWeightedSelectionOrder(candidates, config.GatewaySchedulingConfig{
+		Algorithm:       config.GatewaySchedulingAlgorithmWeightedP2C,
+		P2CChoiceCount:  3,
+		MaxScorePenalty: 5,
+	})
+
+	require.Len(t, order, 3)
+	require.Equal(t, []int64{211, 212, 213}, []int64{order[0].account.ID, order[1].account.ID, order[2].account.ID})
+}
+
+func TestBuildOpenAIWeightedSelectionOrder_SelectionDebtCanOverrideCloseAdvancedScore(t *testing.T) {
+	candidates := []openAIAccountCandidateScore{
+		{
+			account:       &Account{ID: 301, Priority: 0, Concurrency: 1},
+			loadInfo:      &AccountLoadInfo{AccountID: 301},
+			selectionDebt: 5,
+			score:         8,
+		},
+		{
+			account:  &Account{ID: 302, Priority: 0, Concurrency: 1},
+			loadInfo: &AccountLoadInfo{AccountID: 302},
+			score:    7,
+		},
+	}
+
+	order := buildOpenAIWeightedSelectionOrder(candidates, config.GatewaySchedulingConfig{
+		Algorithm:           config.GatewaySchedulingAlgorithmWeightedP2C,
+		P2CChoiceCount:      2,
+		SelectionDebtWeight: 1,
+		ScoreWeights: config.GatewaySchedulingScoreWeights{
+			Debt: 1,
+		},
+		MaxScorePenalty: 5,
+	})
+
+	require.Len(t, order, 2)
+	require.Equal(t, int64(302), order[0].account.ID)
+}
+
 func TestOpenAIGatewayService_SelectAccountWithScheduler_LoadBalanceDistributesAcrossSessions(t *testing.T) {
 	ctx := context.Background()
 	groupID := int64(15)
@@ -3018,8 +3100,9 @@ func TestBuildOpenAIWeightedSelectionOrder_HandlesInvalidScores(t *testing.T) {
 			score:    -1,
 		},
 	}
-	order := buildOpenAIWeightedSelectionOrder(candidates, config.GatewaySchedulingConfig{Algorithm: config.GatewaySchedulingAlgorithmWeightedP2C, P2CChoiceCount: 2, SelectionDebtWeight: 1, WaitPenalty: 1})
+	order := buildOpenAIWeightedSelectionOrder(candidates, config.GatewaySchedulingConfig{Algorithm: config.GatewaySchedulingAlgorithmWeightedP2C, P2CChoiceCount: 3, SelectionDebtWeight: 1, WaitPenalty: 1})
 	require.Len(t, order, len(candidates))
+	require.Equal(t, int64(903), order[0].account.ID)
 	seen := map[int64]struct{}{}
 	for _, item := range order {
 		seen[item.account.ID] = struct{}{}

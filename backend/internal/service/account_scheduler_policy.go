@@ -131,6 +131,7 @@ func schedulerAccountCost(item accountWithLoad, selectionDebt int, cfg config.Ga
 	}
 	capacity := schedulerAccountCapacity(item.account)
 	cost := load / capacity
+	cost += schedulerCapPenalty(item.selectionScorePenalty, cfg.MaxScorePenalty)
 	cost += schedulerSoftPenalty(item.runtimeStatsPenalty(weights, cfg))
 	cost += schedulerSoftPenalty(schedulerRateMultiplierPenalty(item.account, weights.RateMultiplier))
 	cost += schedulerSoftPenalty(schedulerQuotaRiskPenalty(item.account, weights.QuotaRisk, cfg.QuotaRiskThreshold))
