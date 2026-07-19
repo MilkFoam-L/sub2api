@@ -542,6 +542,21 @@ func TestSettingService_ParseSettings_APIKeyACLTrustForwardedIPFallsBackToConfig
 	require.True(t, got.APIKeyACLTrustForwardedIP)
 }
 
+func TestSettingService_ParseSettings_SecuritySwitchesDefaultOn(t *testing.T) {
+	svc := NewSettingService(&settingUpdateRepoStub{}, &config.Config{})
+
+	defaults := svc.parseSettings(map[string]string{})
+	require.True(t, defaults.SessionBindingEnabled)
+	require.True(t, defaults.StepUpEnabled)
+
+	explicitlyDisabled := svc.parseSettings(map[string]string{
+		SettingKeySessionBindingEnabled: "false",
+		SettingKeyStepUpEnabled:         "false",
+	})
+	require.False(t, explicitlyDisabled.SessionBindingEnabled)
+	require.False(t, explicitlyDisabled.StepUpEnabled)
+}
+
 func TestSettingService_GetAntigravityUserAgentVersion_Precedence(t *testing.T) {
 	t.Run("后台设置优先", func(t *testing.T) {
 		svc := NewSettingService(&settingAntigravityUARepoStub{values: map[string]string{

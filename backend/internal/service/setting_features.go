@@ -181,10 +181,22 @@ func (s *SettingService) IsTotpEncryptionKeyConfigured() bool {
 
 // IsSessionBindingEnabled 检查会话 IP/UA 绑定是否启用（默认开启）。
 // 开启时会话与登录时的 IP/User-Agent 绑定，任一变化立即失效并撤销该会话。
+// 缺失设置键或读取失败时保持本地安全默认开启。
 func (s *SettingService) IsSessionBindingEnabled(ctx context.Context) bool {
 	value, err := s.settingRepo.GetValue(ctx, SettingKeySessionBindingEnabled)
 	if err != nil {
-		return true // 默认开启
+		return true // 缺失/读取失败时默认开启
+	}
+	return value != "false"
+}
+
+// IsStepUpEnabled 检查敏感操作 step-up 2FA 门控是否启用（默认开启）。
+// 开启时账号/代理导出、备份创建/下载、S3 配置修改、提升管理员等操作
+// 要求当前会话在有效期内完成过 TOTP step-up 验证。
+func (s *SettingService) IsStepUpEnabled(ctx context.Context) bool {
+	value, err := s.settingRepo.GetValue(ctx, SettingKeyStepUpEnabled)
+	if err != nil {
+		return true // 缺失/读取失败时默认开启
 	}
 	return value != "false"
 }

@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/migrations"
 	_ "github.com/lib/pq"
 	"github.com/stretchr/testify/require"
 )
@@ -43,7 +44,16 @@ func openPromptAuditIntegrationDB(t *testing.T) *sql.DB {
 		);
 	`)
 	require.NoError(t, err)
-	for _, name := range []string{"181_prompt_audit.sql", "182_prompt_audit_full_prompt.sql"} {
+	for _, name := range []string{
+		"182_prompt_audit.sql",
+		"183_prompt_audit_full_prompt.sql",
+		"184_ops_ingress_reject_aggregates.sql",
+		"185_auth_cache_invalidation_outbox.sql",
+	} {
+		_, err := migrations.FS.ReadFile(name)
+		require.NoErrorf(t, err, "migration %s must be embedded", name)
+	}
+	for _, name := range []string{"182_prompt_audit.sql", "183_prompt_audit_full_prompt.sql"} {
 		migration, err := os.ReadFile(filepath.Join("..", "..", "migrations", name))
 		require.NoError(t, err)
 		// The migration runner can retry an interrupted deployment; the migration
