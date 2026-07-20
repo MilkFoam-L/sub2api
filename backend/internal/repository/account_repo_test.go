@@ -22,6 +22,12 @@ const parameterLimitTestDriverName = "sub2api_param_limit_test"
 
 var registerParameterLimitTestDriverOnce sync.Once
 
+func TestUpstreamBillingRateSortExpressionRejectsDeterministicNewAPIFailure(t *testing.T) {
+	expression := upstreamBillingRateSortExpression("account_extra")
+
+	require.Contains(t, expression, "left(account_extra #>> '{upstream_billing_probe,last_error}', 7) <> 'newapi_'")
+}
+
 func TestAccountsToService_LargeActiveAccountSetDoesNotExceedPostgresParameterLimit(t *testing.T) {
 	repo := newParameterLimitAccountRepo(t)
 

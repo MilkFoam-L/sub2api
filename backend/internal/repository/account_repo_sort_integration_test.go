@@ -52,19 +52,29 @@ func (s *AccountRepoSuite) TestListWithFilters_SortByUpstreamBillingRateWithMiss
 	makeAccount("low-rate", service.UpstreamBillingProbeStatusOK, 0.03)
 	makeAccount("missing-rate", "", nil)
 	makeAccount("unsupported-with-retained-rate", service.UpstreamBillingProbeStatusUnsupported, 0.01)
+	mustCreateAccount(s.T(), s.client, &service.Account{
+		Name: "failed-newapi-with-retained-rate",
+		Extra: map[string]any{
+			service.UpstreamBillingProbeExtraKey: map[string]any{
+				"status":     service.UpstreamBillingProbeStatusFailed,
+				"last_error": "newapi_group_ambiguous",
+				"data":       map[string]any{"effective_rate_multiplier": 0.02},
+			},
+		},
+	})
 
 	for _, tc := range []struct {
 		order string
 		want  []string
 	}{
-		{order: "asc", want: []string{"low-rate", "high-rate", "missing-rate", "unsupported-with-retained-rate"}},
-		{order: "desc", want: []string{"high-rate", "low-rate", "unsupported-with-retained-rate", "missing-rate"}},
+		{order: "asc", want: []string{"low-rate", "high-rate", "missing-rate", "unsupported-with-retained-rate", "failed-newapi-with-retained-rate"}},
+		{order: "desc", want: []string{"high-rate", "low-rate", "failed-newapi-with-retained-rate", "unsupported-with-retained-rate", "missing-rate"}},
 	} {
 		accounts, _, err := s.repo.ListWithFilters(s.ctx, pagination.PaginationParams{
 			Page: 1, PageSize: 10, SortBy: "upstream_billing_rate", SortOrder: tc.order,
-		}, "", "", "", "", 0, "")
+		}, "", "", "", "", 0, "", "")
 		s.Require().NoError(err)
-		s.Require().Len(accounts, 4)
+		s.Require().Len(accounts, 5)
 		for i, name := range tc.want {
 			s.Require().Equal(name, accounts[i].Name)
 		}
@@ -130,7 +140,7 @@ func (s *AccountRepoSuite) TestListWithFilters_SortByCurrentUpstreamBillingRateD
 	} {
 		accounts, _, err := s.repo.ListWithFilters(s.ctx, pagination.PaginationParams{
 			Page: 1, PageSize: 10, SortBy: "upstream_billing_rate", SortOrder: tc.order,
-		}, "", "", "", "", 0, "")
+		}, "", "", "", "", 0, "", "")
 		s.Require().NoError(err)
 		s.Require().Len(accounts, 2)
 		for i, name := range tc.want {
