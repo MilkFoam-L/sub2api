@@ -665,9 +665,7 @@ describe('admin AccountsView bulk edit scope', () => {
       created_at: '2026-07-13T00:00:00Z',
       updated_at: '2026-07-13T00:00:00Z'
     })
-    listAccounts
-      .mockResolvedValueOnce({ items: [account(7)], total: 1, page: 1, page_size: 20, pages: 1 })
-      .mockResolvedValueOnce({ items: [account(7)], total: 1, page: 1, page_size: 20, pages: 1 })
+    listAccounts.mockResolvedValue({ items: [account(7)], total: 1, page: 1, page_size: 20, pages: 1 })
     probeUpstreamBillingBatch.mockResolvedValue([
       {
         account_id: 7,
@@ -716,11 +714,12 @@ describe('admin AccountsView bulk edit scope', () => {
     })
 
     await flushPromises()
+    const callsBeforeProbe = listAccounts.mock.calls.length
     await wrapper.get('[data-test="select-row"] input').trigger('change')
     await wrapper.get('[data-test="probe-upstream-billing"]').trigger('click')
     await flushPromises()
 
     expect(probeUpstreamBillingBatch).toHaveBeenCalledWith([7])
-    expect(listAccounts).toHaveBeenCalledTimes(2)
+    expect(listAccounts).toHaveBeenCalledTimes(callsBeforeProbe + 1)
   })
 })

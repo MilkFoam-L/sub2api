@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -147,6 +148,9 @@ type upstreamBillingProbeHTTPStub struct {
 	active         atomic.Int64
 	maxActive      atomic.Int64
 	beforeResponse func()
+	responseForURL func(*http.Request) (*http.Response, error)
+	requestsMu     sync.Mutex
+	requests       []*http.Request
 }
 
 func (u *upstreamBillingProbeHTTPStub) Do(req *http.Request, proxyURL string, accountID int64, accountConcurrency int) (*http.Response, error) {
@@ -161,6 +165,14 @@ func (u *upstreamBillingProbeHTTPStub) Do(req *http.Request, proxyURL string, ac
 	}
 	if u.beforeResponse != nil {
 		u.beforeResponse()
+	}
+	recorded := req.Clone(req.Context())
+	recorded.Header = req.Header.Clone()
+	u.requestsMu.Lock()
+	u.requests = append(u.requests, recorded)
+	u.requestsMu.Unlock()
+	if u.responseForURL != nil {
+		return u.responseForURL(req)
 	}
 	return &http.Response{
 		StatusCode: http.StatusOK,
@@ -551,7 +563,7 @@ func TestUpstreamBillingProbeUnsupportedAndAccountToggle(t *testing.T) {
 	snapshot, err := svc.ProbeAccount(context.Background(), account.ID)
 	require.NoError(t, err)
 	require.Equal(t, UpstreamBillingProbeStatusUnsupported, snapshot.Status)
-	require.Equal(t, "unsupported", snapshot.LastError)
+	require.Equal(t, "newapi_api_unsupported", snapshot.LastError)
 	require.False(t, snapshot.NextProbeAt.Before(fixedNow.Add(24*time.Minute)))
 	require.False(t, snapshot.NextProbeAt.After(fixedNow.Add(36*time.Minute)))
 
@@ -565,6 +577,306 @@ func TestUpstreamBillingProbeUnsupportedAndAccountToggle(t *testing.T) {
 	repo.accounts[invalid.ID] = invalid
 	err = svc.SetAccountEnabled(context.Background(), invalid.ID, true)
 	require.True(t, errors.Is(err, ErrUpstreamBillingProbeAccountInvalid))
+}
+
+func newProbeHTTPResponse(status int, body string) *http.Response {
+	return &http.Response{
+		StatusCode: status,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body:       io.NopCloser(strings.NewReader(body)),
+	}
+}
+
+func recordedProbeRequest(t *testing.T, upstream *upstreamBillingProbeHTTPStub, path string) *http.Request {
+	t.Helper()
+	upstream.requestsMu.Lock()
+	defer upstream.requestsMu.Unlock()
+	for _, req := range upstream.requests {
+		if req.URL.Path == path {
+			return req
+		}
+	}
+	t.Fatalf("request path %s was not recorded", path)
+	return nil
+}
+
+func TestUpstreamBillingProbeFallsBackToVerifiedNewAPIGroup(t *testing.T) {
+	account := &Account{
+		ID:          40,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Status:      StatusActive,
+		Concurrency: 1,
+		Credentials: map[string]any{"api_key": "sk-sensitive", "base_url": "https://upstream.example/v1"},
+	}
+	repo := &upstreamBillingProbeAccountRepo{accounts: map[int64]*Account{account.ID: account}}
+	upstream := &upstreamBillingProbeHTTPStub{responseForURL: func(req *http.Request) (*http.Response, error) {
+		switch req.URL.Path {
+		case "/v1/sub2api/billing":
+			return newProbeHTTPResponse(http.StatusNotFound, strings.Repeat("x", int(upstreamBillingProbeMaxBodyBytes)+1)), nil
+		case "/api/log/token":
+			return newProbeHTTPResponse(http.StatusOK, `{
+				"success":true,
+				"data":[
+					{"group":" alpha ","content":"private request detail","ip":"192.0.2.10"},
+					{"group":"alpha","content":"another private detail"}
+				]
+			}`), nil
+		case "/api/pricing":
+			return newProbeHTTPResponse(http.StatusOK, `{
+				"success":true,
+				"group_ratio":{"alpha":0.8},
+				"data":[{"model_name":"secret-model-table","model_ratio":99}]
+			}`), nil
+		default:
+			return newProbeHTTPResponse(http.StatusNotFound, `{"error":"unexpected path"}`), nil
+		}
+	}}
+	svc := newUpstreamBillingProbeTestService(repo, upstream, &upstreamBillingProbeSettingRepo{})
+	fixedNow := time.Date(2026, time.July, 13, 2, 0, 0, 0, time.UTC)
+	svc.now = func() time.Time { return fixedNow }
+
+	snapshot, err := svc.ProbeAccount(context.Background(), account.ID)
+
+	require.NoError(t, err)
+	require.NotNil(t, snapshot)
+	require.Equal(t, UpstreamBillingProbeStatusOK, snapshot.Status)
+	require.Equal(t, "newapi", snapshot.Data["source"])
+	require.Equal(t, "alpha", snapshot.Data["group_name"])
+	require.Equal(t, "token_logs", snapshot.Data["group_source"])
+	require.Equal(t, "newapi.token_group_billing", snapshot.Data["object"])
+	require.Equal(t, "token", snapshot.Data["billing_scope"])
+	require.Equal(t, 0.8, snapshot.Data["group_rate_multiplier"])
+	require.Equal(t, 0.8, snapshot.Data["resolved_rate_multiplier"])
+	require.Equal(t, 0.8, snapshot.Data["effective_rate_multiplier"])
+	require.Equal(t, false, snapshot.Data["peak_rate_enabled"])
+
+	billingReq := recordedProbeRequest(t, upstream, "/v1/sub2api/billing")
+	logReq := recordedProbeRequest(t, upstream, "/api/log/token")
+	pricingReq := recordedProbeRequest(t, upstream, "/api/pricing")
+	require.Equal(t, "Bearer sk-sensitive", billingReq.Header.Get("Authorization"))
+	require.Equal(t, "Bearer sk-sensitive", logReq.Header.Get("Authorization"))
+	require.Empty(t, pricingReq.Header.Get("Authorization"))
+	require.True(t, HTTPUpstreamRedirectsDisabled(logReq.Context()))
+	require.True(t, HTTPUpstreamRedirectsDisabled(pricingReq.Context()))
+
+	persisted, marshalErr := json.Marshal(account.Extra[UpstreamBillingProbeExtraKey])
+	require.NoError(t, marshalErr)
+	require.NotContains(t, string(persisted), "private request detail")
+	require.NotContains(t, string(persisted), "192.0.2.10")
+	require.NotContains(t, string(persisted), "secret-model-table")
+	require.NotContains(t, string(persisted), "sk-sensitive")
+}
+
+func TestUpstreamBillingProbeNewAPIGroupResolutionFailsClosed(t *testing.T) {
+	tests := []struct {
+		name               string
+		logStatus          int
+		logBody            string
+		pricingStatus      int
+		pricingBody        string
+		wantStatus         string
+		wantReason         string
+		observedGroups     []string
+		wantPricingRequest bool
+	}{
+		{
+			name:          "no observed group",
+			logStatus:     http.StatusOK,
+			logBody:       `{"success":true,"data":[]}`,
+			pricingStatus: http.StatusOK,
+			pricingBody:   `{"success":true,"group_ratio":{"default":0.03}}`,
+			wantStatus:    UpstreamBillingProbeStatusFailed,
+			wantReason:    "newapi_group_unresolved",
+		},
+		{
+			name:           "multiple observed groups",
+			logStatus:      http.StatusOK,
+			logBody:        `{"success":true,"data":[{"group":"beta"},{"group":"alpha"},{"group":"beta"}]}`,
+			pricingStatus:  http.StatusOK,
+			pricingBody:    `{"success":true,"group_ratio":{"alpha":0.8,"beta":0.6}}`,
+			wantStatus:     UpstreamBillingProbeStatusFailed,
+			wantReason:     "newapi_group_ambiguous",
+			observedGroups: []string{"alpha", "beta"},
+		},
+		{
+			name:               "observed group is absent from pricing",
+			logStatus:          http.StatusOK,
+			logBody:            `{"success":true,"data":[{"group":"private"}]}`,
+			pricingStatus:      http.StatusOK,
+			pricingBody:        `{"success":true,"group_ratio":{"default":0.03}}`,
+			wantStatus:         UpstreamBillingProbeStatusFailed,
+			wantReason:         "newapi_group_not_priced",
+			observedGroups:     []string{"private"},
+			wantPricingRequest: true,
+		},
+		{
+			name:          "NewAPI token log endpoint is unsupported",
+			logStatus:     http.StatusNotFound,
+			logBody:       `{"error":"not found"}`,
+			pricingStatus: http.StatusNotFound,
+			pricingBody:   `{"error":"not found"}`,
+			wantStatus:    UpstreamBillingProbeStatusUnsupported,
+			wantReason:    "newapi_api_unsupported",
+		},
+		{
+			name:          "token log response is too large",
+			logStatus:     http.StatusOK,
+			logBody:       strings.Repeat("x", 3*1024*1024),
+			pricingStatus: http.StatusOK,
+			pricingBody:   `{"success":true,"group_ratio":{"default":0.03}}`,
+			wantStatus:    UpstreamBillingProbeStatusFailed,
+			wantReason:    "newapi_log_response_too_large",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			account := &Account{
+				ID:          41,
+				Platform:    PlatformOpenAI,
+				Type:        AccountTypeAPIKey,
+				Status:      StatusActive,
+				Concurrency: 1,
+				Credentials: map[string]any{"api_key": "sk-sensitive", "base_url": "https://upstream.example"},
+			}
+			repo := &upstreamBillingProbeAccountRepo{accounts: map[int64]*Account{account.ID: account}}
+			upstream := &upstreamBillingProbeHTTPStub{responseForURL: func(req *http.Request) (*http.Response, error) {
+				switch req.URL.Path {
+				case "/v1/sub2api/billing":
+					return newProbeHTTPResponse(http.StatusNotFound, `{"error":"not found"}`), nil
+				case "/api/log/token":
+					return newProbeHTTPResponse(tt.logStatus, tt.logBody), nil
+				case "/api/pricing":
+					return newProbeHTTPResponse(tt.pricingStatus, tt.pricingBody), nil
+				default:
+					return newProbeHTTPResponse(http.StatusNotFound, `{"error":"unexpected path"}`), nil
+				}
+			}}
+			svc := newUpstreamBillingProbeTestService(repo, upstream, &upstreamBillingProbeSettingRepo{})
+			svc.now = func() time.Time { return time.Date(2026, time.July, 13, 2, 0, 0, 0, time.UTC) }
+
+			snapshot, err := svc.ProbeAccount(context.Background(), account.ID)
+
+			require.NoError(t, err)
+			require.NotNil(t, snapshot)
+			require.Equal(t, tt.wantStatus, snapshot.Status)
+			require.Equal(t, tt.wantReason, snapshot.LastError)
+			require.Equal(t, tt.observedGroups, snapshot.ObservedGroups)
+			pricingRequested := false
+			upstream.requestsMu.Lock()
+			for _, recorded := range upstream.requests {
+				if recorded.URL.Path == "/api/pricing" {
+					pricingRequested = true
+					break
+				}
+			}
+			upstream.requestsMu.Unlock()
+			require.Equal(t, tt.wantPricingRequest, pricingRequested)
+			persisted, marshalErr := json.Marshal(account.Extra[UpstreamBillingProbeExtraKey])
+			require.NoError(t, marshalErr)
+			require.NotContains(t, string(persisted), "sk-sensitive")
+		})
+	}
+}
+
+func TestNewAPIDeterministicFailureClearsPreviousRate(t *testing.T) {
+	account := &Account{
+		ID:          51,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Status:      StatusActive,
+		Concurrency: 1,
+		Credentials: map[string]any{"api_key": "sk-test", "base_url": "https://upstream.example"},
+	}
+	repo := &upstreamBillingProbeAccountRepo{accounts: map[int64]*Account{account.ID: account}}
+	phase := atomic.Int32{}
+	upstream := &upstreamBillingProbeHTTPStub{responseForURL: func(req *http.Request) (*http.Response, error) {
+		switch req.URL.Path {
+		case "/v1/sub2api/billing":
+			return newProbeHTTPResponse(http.StatusNotFound, `{"error":"not found"}`), nil
+		case "/api/log/token":
+			if phase.Load() == 0 {
+				return newProbeHTTPResponse(http.StatusOK, `{"success":true,"data":[{"group":"alpha"}]}`), nil
+			}
+			return newProbeHTTPResponse(http.StatusOK, `{"success":true,"data":[{"group":"alpha"},{"group":"beta"}]}`), nil
+		case "/api/pricing":
+			return newProbeHTTPResponse(http.StatusOK, `{"success":true,"group_ratio":{"alpha":0.8,"beta":0.6}}`), nil
+		default:
+			return newProbeHTTPResponse(http.StatusNotFound, `{"error":"unexpected path"}`), nil
+		}
+	}}
+	svc := newUpstreamBillingProbeTestService(repo, upstream, &upstreamBillingProbeSettingRepo{})
+	svc.now = func() time.Time { return time.Date(2026, time.July, 13, 2, 0, 0, 0, time.UTC) }
+
+	first, err := svc.ProbeAccount(context.Background(), account.ID)
+	require.NoError(t, err)
+	require.Equal(t, UpstreamBillingProbeStatusOK, first.Status)
+	require.NotEmpty(t, first.Data)
+
+	phase.Store(1)
+	second, err := svc.ProbeAccount(context.Background(), account.ID)
+	require.NoError(t, err)
+	require.Equal(t, UpstreamBillingProbeStatusFailed, second.Status)
+	require.Equal(t, "newapi_group_ambiguous", second.LastError)
+	require.Nil(t, second.Data)
+	require.Nil(t, second.ReceivedAt)
+	require.Nil(t, second.FreshUntil)
+
+	stored, ok := openAIFreshUpstreamBillingRate(account, time.Date(2026, time.July, 13, 2, 1, 0, 0, time.UTC))
+	require.False(t, ok)
+	require.Zero(t, stored)
+}
+
+func TestParseNewAPIProbeResponsesRejectsUntrustedShapes(t *testing.T) {
+	logCases := []string{
+		`{"success":false,"data":[{"group":"default"}]}`,
+		`{"success":true,"success":false,"data":[]}`,
+		`{"success":true,"data":[{"group":42}]}`,
+		`{"success":true,"data":[{"group":"alpha","group":"beta"}]}`,
+		`{"success":true,"data":[{"name":"missing-group"}]}`,
+		`{"success":true,"data":[{"group":null}]}`,
+		`{"success":true,"data":[{"group":"   "}]}`,
+		`{"success":true,"data":[]} {"trailing":true}`,
+		fmt.Sprintf(`{"success":true,"data":[{"group":%q}]}`, strings.Repeat("g", 129)),
+	}
+	for _, body := range logCases {
+		_, err := parseNewAPITokenLogGroups([]byte(body))
+		require.Error(t, err)
+	}
+
+	pricingCases := []string{
+		`{"success":false,"group_ratio":{"default":0.03}}`,
+		`{"success":true,"group_ratio":{}}`,
+		`{"success":true,"group_ratio":{"default":-0.03}}`,
+		`{"success":true,"success":false,"group_ratio":{"default":0.03}}`,
+		`{"success":true,"group_ratio":{"default":0.03,"default":0.04}}`,
+		`{"success":true,"group_ratio":{" default ":0.03,"default":0.04}}`,
+		`{"success":true,"group_ratio":{"default":0.03}} {"trailing":true}`,
+	}
+	for _, body := range pricingCases {
+		_, err := parseNewAPIPricingGroupRatios([]byte(body))
+		require.Error(t, err)
+	}
+}
+
+func TestBuildNewAPIControlEndpointURL(t *testing.T) {
+	tests := []struct {
+		base     string
+		endpoint string
+		want     string
+	}{
+		{base: "https://upstream.example", endpoint: "/api/log/token", want: "https://upstream.example/api/log/token"},
+		{base: "https://upstream.example/v1", endpoint: "/api/pricing", want: "https://upstream.example/api/pricing"},
+		{base: "https://upstream.example/gateway/v1/", endpoint: "/api/log/token", want: "https://upstream.example/gateway/api/log/token"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.want, func(t *testing.T) {
+			got, err := buildNewAPIControlEndpointURL(tt.base, tt.endpoint)
+			require.NoError(t, err)
+			require.Equal(t, tt.want, got)
+		})
+	}
 }
 
 func TestUpstreamBillingProbeRunnerIsBoundedAndManualProbeIgnoresSwitches(t *testing.T) {

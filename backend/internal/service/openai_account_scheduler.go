@@ -2660,6 +2660,7 @@ func openAIFreshUpstreamBillingRate(account *Account, now time.Time) (float64, b
 	}
 	snapshot := decodeUpstreamBillingProbeSnapshot(account.Extra)
 	if snapshot == nil || (snapshot.Status != UpstreamBillingProbeStatusOK && snapshot.Status != UpstreamBillingProbeStatusFailed) ||
+		(snapshot.Status == UpstreamBillingProbeStatusFailed && newAPIProbeFailureInvalidatesRate(snapshot.LastError)) ||
 		snapshot.ReceivedAt == nil || snapshot.ReceivedAt.IsZero() {
 		return 0, false
 	}

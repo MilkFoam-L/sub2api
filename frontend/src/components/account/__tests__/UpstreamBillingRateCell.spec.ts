@@ -163,6 +163,31 @@ describe('UpstreamBillingRateCell', () => {
     expect(wrapper.text()).toContain('admin.accounts.upstreamBilling.stale')
   })
 
+  it('does not display retained data after a deterministic NewAPI failure', () => {
+    const wrapper = mount(UpstreamBillingRateCell, {
+      props: {
+        account: makeAccount({
+          extra: {
+            upstream_billing_probe: {
+              status: 'failed',
+              data: billingData,
+              received_at: '2026-07-13T00:00:00Z',
+              fresh_until: '2026-07-13T01:00:00Z',
+              last_attempt_at: '2026-07-13T00:10:00Z',
+              next_probe_at: '2026-07-13T00:40:00Z',
+              last_error: 'newapi_group_ambiguous',
+              observed_groups: ['alpha', 'beta']
+            }
+          }
+        }),
+        now: Date.parse('2026-07-13T00:15:00Z')
+      }
+    })
+
+    expect(wrapper.get('[data-testid="upstream-billing-rate"]').text()).toBe('admin.accounts.upstreamBilling.newapiGroupAmbiguous')
+    expect(wrapper.text()).not.toContain('0.6x')
+  })
+
   it('shows stale snapshot details, local next probe time, and the account probe state', async () => {
     const wrapper = mount(UpstreamBillingRateCell, {
       attachTo: document.body,
@@ -328,6 +353,106 @@ describe('UpstreamBillingRateCell', () => {
     expect(wrapper.get('[data-testid="upstream-billing-rate"]').text()).toBe('admin.accounts.upstreamBilling.failed')
     expect(wrapper.text()).toContain('admin.accounts.upstreamBilling.failed')
     expect(wrapper.text()).not.toContain('admin.accounts.upstreamBilling.stale')
+  })
+
+  it('shows the NewAPI source and verified token group in the tooltip', async () => {
+    const wrapper = mount(UpstreamBillingRateCell, {
+      attachTo: document.body,
+      props: {
+        account: makeAccount({
+          extra: {
+            upstream_billing_probe_enabled: true,
+            upstream_billing_probe: {
+              status: 'ok',
+              data: {
+                ...billingData,
+                object: 'newapi.token_group_billing',
+                source: 'newapi',
+                group_name: 'newapi-default',
+                group_source: 'token_logs'
+              },
+              received_at: '2026-07-13T00:00:00Z',
+              fresh_until: '2026-07-14T00:00:00Z',
+              last_attempt_at: '2026-07-13T00:00:00Z',
+              next_probe_at: '2026-07-13T00:30:00Z'
+            }
+          }
+        }),
+        now: Date.now()
+      }
+    })
+
+    await wrapper.get('[data-testid="upstream-billing-details"]').trigger('mouseenter')
+    await flushPromises()
+
+    const tooltips = document.body.querySelectorAll('[role="tooltip"]')
+    const tooltip = tooltips[tooltips.length - 1] as HTMLElement
+    expect(tooltip.textContent).toContain('admin.accounts.upstreamBilling.sourceNewAPI')
+    expect(tooltip.textContent).toContain('admin.accounts.upstreamBilling.actualGroup:newapi-default')
+    wrapper.unmount()
+  })
+
+  it.each([
+    ['newapi_group_unresolved', 'admin.accounts.upstreamBilling.newapiGroupUnresolved'],
+    ['newapi_group_not_priced', 'admin.accounts.upstreamBilling.newapiGroupNotPriced'],
+    ['newapi_api_unsupported', 'admin.accounts.upstreamBilling.newapiAPIUnsupported']
+  ])('shows a specific explanation for %s', async (reason, expectedKey) => {
+    const wrapper = mount(UpstreamBillingRateCell, {
+      attachTo: document.body,
+      props: {
+        account: makeAccount({
+          extra: {
+            upstream_billing_probe_enabled: true,
+            upstream_billing_probe: {
+              status: reason === 'newapi_api_unsupported' ? 'unsupported' : 'failed',
+              last_attempt_at: '2026-07-13T00:00:00Z',
+              next_probe_at: '2026-07-13T00:30:00Z',
+              last_error: reason
+            }
+          }
+        }),
+        now: Date.now()
+      }
+    })
+
+    await wrapper.get('[data-testid="upstream-billing-details"]').trigger('mouseenter')
+    await flushPromises()
+
+    const tooltips = document.body.querySelectorAll('[role="tooltip"]')
+    const tooltip = tooltips[tooltips.length - 1] as HTMLElement
+    expect(tooltip.textContent).toContain(expectedKey)
+    expect(tooltip.textContent).not.toContain(reason)
+    wrapper.unmount()
+  })
+
+  it('shows ambiguous observed groups and explicitly refuses to guess', async () => {
+    const wrapper = mount(UpstreamBillingRateCell, {
+      attachTo: document.body,
+      props: {
+        account: makeAccount({
+          extra: {
+            upstream_billing_probe_enabled: true,
+            upstream_billing_probe: {
+              status: 'failed',
+              last_attempt_at: '2026-07-13T00:00:00Z',
+              next_probe_at: '2026-07-13T00:30:00Z',
+              last_error: 'newapi_group_ambiguous',
+              observed_groups: ['group-a', 'group-b']
+            }
+          }
+        }),
+        now: Date.now()
+      }
+    })
+
+    await wrapper.get('[data-testid="upstream-billing-details"]').trigger('mouseenter')
+    await flushPromises()
+
+    const tooltips = document.body.querySelectorAll('[role="tooltip"]')
+    const tooltip = tooltips[tooltips.length - 1] as HTMLElement
+    expect(tooltip.textContent).toContain('admin.accounts.upstreamBilling.newapiGroupAmbiguous')
+    expect(tooltip.textContent).toContain('admin.accounts.upstreamBilling.observedGroups:group-a, group-b')
+    wrapper.unmount()
   })
 
   it('uses unsupported as the primary tooltip trigger without a dash', () => {

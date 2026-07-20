@@ -28,6 +28,10 @@
                 : t('admin.accounts.upstreamBilling.noPeakRate')
             }}
           </p>
+          <template v-if="isNewAPI">
+            <p>{{ sourceLabel }}</p>
+            <p v-if="actualGroupLabel">{{ actualGroupLabel }}</p>
+          </template>
           <p>{{ t('admin.accounts.upstreamBilling.effectiveRate', { value: currentEffectiveRate ?? '-' }) }}</p>
           <p>{{ t('admin.accounts.upstreamBilling.updatedAt', { value: formatDate(snapshot?.received_at) }) }}</p>
         </template>
@@ -43,6 +47,9 @@
           </p>
         </template>
         <p v-else>{{ statusLabel || '-' }}</p>
+        <p v-if="snapshot?.last_error === 'newapi_group_ambiguous' && observedGroupsLabel">
+          {{ t('admin.accounts.upstreamBilling.observedGroups', { value: observedGroupsLabel }) }}
+        </p>
         <p
           v-if="probeEnabled && globalProbeEnabled !== false && nextProbeAt"
           data-testid="upstream-billing-next-probe"
@@ -156,6 +163,26 @@ const minuteInTimeZone = (timestamp: number, timeZone?: string) => {
     return null
   }
 }
+const isNewAPI = computed(() => data.value?.object === 'newapi.token_group_billing' || data.value?.source === 'newapi')
+const sourceLabel = computed(() => isNewAPI.value ? t('admin.accounts.upstreamBilling.sourceNewAPI') : '')
+const actualGroupLabel = computed(() => {
+  const value = data.value?.group_name
+  return value ? t('admin.accounts.upstreamBilling.actualGroup', { value }) : ''
+})
+const newApiIssueLabel = computed(() => {
+  const key = snapshot.value?.last_error
+  switch (key) {
+    case 'newapi_group_unresolved': return t('admin.accounts.upstreamBilling.newapiGroupUnresolved')
+    case 'newapi_group_ambiguous': return t('admin.accounts.upstreamBilling.newapiGroupAmbiguous')
+    case 'newapi_group_not_priced': return t('admin.accounts.upstreamBilling.newapiGroupNotPriced')
+    case 'newapi_api_unsupported': return t('admin.accounts.upstreamBilling.newapiAPIUnsupported')
+    default: return ''
+  }
+})
+const observedGroupsLabel = computed(() => {
+  const groups = snapshot.value?.observed_groups
+  return Array.isArray(groups) && groups.length ? groups.join(', ') : ''
+})
 const currentEffectiveRate = computed(() => {
   const billing = data.value
   if (!billing) return null
@@ -187,13 +214,17 @@ const elapsedSinceLastSuccess = computed(() => {
   if (elapsedHours < 24) return t('admin.accounts.upstreamBilling.hoursAgo', { count: elapsedHours })
   return t('admin.accounts.upstreamBilling.daysAgo', { count: Math.floor(elapsedHours / 24) })
 })
+const newAPIProbeFailureInvalidatesRate = computed(() =>
+  snapshot.value?.status === 'failed' && snapshot.value.last_error?.startsWith('newapi_')
+)
 const effectiveRate = computed(() => {
-  if (!validTimestamps.value || stale.value || !['ok', 'failed'].includes(snapshot.value?.status ?? '')) return '-'
+  if (!validTimestamps.value || stale.value || newAPIProbeFailureInvalidatesRate.value || !['ok', 'failed'].includes(snapshot.value?.status ?? '')) return '-'
   const value = currentEffectiveRate.value
   return value == null ? '-' : `${Number(value.toPrecision(12))}x`
 })
 const statusLabel = computed(() => {
   if (!snapshot.value) return t('admin.accounts.upstreamBilling.notProbed')
+  if (newApiIssueLabel.value) return newApiIssueLabel.value
   if (snapshot.value.status === 'unsupported') return t('admin.accounts.upstreamBilling.unsupported')
   if (stale.value) return t('admin.accounts.upstreamBilling.stale')
   if (snapshot.value.status === 'failed') return t('admin.accounts.upstreamBilling.failed')
@@ -201,6 +232,7 @@ const statusLabel = computed(() => {
 })
 const statusClass = computed(() => {
   if (!snapshot.value) return 'text-gray-400 dark:text-gray-500'
+  if (newApiIssueLabel.value) return 'text-amber-600 dark:text-amber-400'
   if (snapshot.value.status === 'unsupported') return 'text-gray-500 dark:text-gray-400'
   if (stale.value) return 'text-amber-600 dark:text-amber-400'
   if (snapshot.value.status === 'failed') return 'text-red-600 dark:text-red-400'

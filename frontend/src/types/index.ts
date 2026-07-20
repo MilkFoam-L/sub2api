@@ -880,7 +880,7 @@ export interface TempUnschedulableStatus {
 }
 
 export interface UpstreamBillingData {
-  object: 'sub2api.key_billing'
+  object: 'sub2api.key_billing' | 'newapi.token_group_billing'
   schema_version: 1
   billing_scope: 'token'
   group_rate_multiplier: number
@@ -894,6 +894,9 @@ export interface UpstreamBillingData {
   effective_rate_multiplier: number
   timezone?: string
   observed_at: string
+  source?: 'sub2api' | 'newapi'
+  group_name?: string
+  group_source?: 'token_logs'
 }
 
 export type UpstreamBillingProbeStatus = 'ok' | 'unsupported' | 'failed'
@@ -901,6 +904,7 @@ export type UpstreamBillingProbeStatus = 'ok' | 'unsupported' | 'failed'
 export interface UpstreamBillingProbeSnapshot {
   status: UpstreamBillingProbeStatus
   data?: UpstreamBillingData
+  observed_groups?: string[]
   received_at?: string
   fresh_until?: string
   last_attempt_at: string
