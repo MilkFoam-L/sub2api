@@ -26,7 +26,7 @@
             class="flex overflow-hidden border border-border bg-card shadow-sm transition-all duration-500"
             :class="navCondensed ? 'h-8 w-8 rounded-xl' : 'h-10 w-10 rounded-2xl'"
           >
-            <img :src="siteLogo || '/logo.png'" alt="Logo" class="h-full w-full object-contain" />
+            <img :src="siteLogo || '/logo.svg'" alt="Logo" class="h-full w-full object-contain" />
           </span>
           <span class="hidden text-sm font-semibold sm:block">{{ siteName }}</span>
         </router-link>
