@@ -917,11 +917,51 @@ export interface UpstreamBillingProbeSnapshot {
 export interface UpstreamBillingProbeSettings {
   enabled: boolean
   interval_minutes: number
+  balance_enabled?: boolean
+  balance_interval_minutes?: number
 }
 
 export interface UpstreamBillingProbeResult {
   account_id: number
   snapshot?: UpstreamBillingProbeSnapshot
+  error?: string
+}
+
+export interface UpstreamBalanceData {
+  source?: 'sub2api' | 'newapi' | string
+  currency?: string
+  raw_unit?: string
+  mode?: string
+  unlimited?: boolean
+  remaining?: number
+  used?: number
+  limit?: number
+  balance?: number
+  quota_per_unit?: number
+  raw_limit?: number
+  raw_used?: number
+  raw_remaining?: number
+  expires_at_unix?: number
+  subscription?: Record<string, unknown>
+}
+
+export type UpstreamBalanceProbeStatus = 'ok' | 'unsupported' | 'failed'
+
+export interface UpstreamBalanceProbeSnapshot {
+  status: UpstreamBalanceProbeStatus
+  data?: UpstreamBalanceData
+  received_at?: string
+  fresh_until?: string
+  last_attempt_at?: string
+  next_probe_at?: string
+  failure_count?: number
+  http_status?: number
+  last_error?: string
+}
+
+export interface UpstreamBalanceProbeResult {
+  account_id: number
+  snapshot?: UpstreamBalanceProbeSnapshot
   error?: string
 }
 
@@ -943,6 +983,8 @@ export interface Account {
     antigravity_credits_overages?: Record<string, { activated_at: string; active_until: string }>
     upstream_billing_probe_enabled?: boolean
     upstream_billing_probe?: UpstreamBillingProbeSnapshot
+    upstream_balance_probe_enabled?: boolean
+    upstream_balance_probe?: UpstreamBalanceProbeSnapshot
   } & Record<string, unknown>)
   proxy_id: number | null
   proxy_fallback_origin_id?: number | null
@@ -1226,6 +1268,7 @@ export interface CreateAccountRequest {
   expires_at?: number | null
   auto_pause_on_expired?: boolean
   upstream_billing_probe_enabled?: boolean
+  upstream_balance_probe_enabled?: boolean
   confirm_mixed_channel_risk?: boolean
 }
 

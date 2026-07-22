@@ -212,6 +212,14 @@ vi.mock("vue-i18n", async () => {
     "admin.settings.upstreamBillingProbe.intervalHint": "范围 5–1440 分钟。",
     "admin.settings.upstreamBillingProbe.saved": "上游倍率自动探测设置已保存",
     "admin.settings.upstreamBillingProbe.saveFailed": "保存上游倍率自动探测设置失败",
+    "admin.settings.upstreamBalanceProbe.title": "上游余额自动探测",
+    "admin.settings.upstreamBalanceProbe.description": "定期获取上游余额或额度。",
+    "admin.settings.upstreamBalanceProbe.enabled": "启用全局余额探测",
+    "admin.settings.upstreamBalanceProbe.enabledHint": "仅对账号自身已启用余额探测的账号执行。",
+    "admin.settings.upstreamBalanceProbe.intervalMinutes": "探测周期（分钟）",
+    "admin.settings.upstreamBalanceProbe.intervalHint": "范围 5–1440 分钟。",
+    "admin.settings.upstreamBalanceProbe.saved": "上游余额自动探测设置已保存",
+    "admin.settings.upstreamBalanceProbe.saveFailed": "保存上游余额自动探测设置失败",
     "admin.settings.site.uploadImage": "上传图片",
     "admin.settings.site.remove": "移除",
     "admin.settings.platformQuota.platform": "平台",
@@ -1002,8 +1010,38 @@ describe("admin SettingsView payment visible method controls", () => {
     expect(updateUpstreamBillingProbeSettings).toHaveBeenCalledWith({
       enabled: true,
       interval_minutes: 60,
+      balance_enabled: true,
+      balance_interval_minutes: 30,
     });
     expect(showSuccess).toHaveBeenCalledWith("上游倍率自动探测设置已保存");
+  });
+
+  it("loads and saves upstream balance probe settings in the adjacent card", async () => {
+    getUpstreamBillingProbeSettings.mockResolvedValueOnce({
+      enabled: true,
+      interval_minutes: 30,
+      balance_enabled: false,
+      balance_interval_minutes: 45,
+    });
+
+    const wrapper = mountView();
+    await flushPromises();
+    await openGatewayTab(wrapper);
+
+    const card = wrapper.get('[data-testid="upstream-balance-probe-settings"]');
+    expect(card.text()).toContain("上游余额自动探测");
+    expect((card.get('[data-testid="upstream-balance-probe-enabled"]').element as HTMLInputElement).checked).toBe(false);
+    await card.get('[data-testid="upstream-balance-probe-enabled"]').setValue(true);
+    await card.get('[data-testid="upstream-balance-probe-interval"]').setValue(60);
+    await card.get('[data-testid="upstream-balance-probe-save"]').trigger("click");
+    await flushPromises();
+
+    expect(updateUpstreamBillingProbeSettings).toHaveBeenCalledWith({
+      enabled: true,
+      interval_minutes: 30,
+      balance_enabled: true,
+      balance_interval_minutes: 60,
+    });
   });
 
   it("places and explains rate controls for both scheduling modes", async () => {

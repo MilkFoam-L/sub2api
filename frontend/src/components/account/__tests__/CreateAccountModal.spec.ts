@@ -171,6 +171,7 @@ describe('CreateAccountModal OpenAI long-context billing', () => {
     await submitApiKeyAccount('openai')
 
     expect(createAccountMock.mock.calls[0]?.[0]?.upstream_billing_probe_enabled).toBe(true)
+    expect(createAccountMock.mock.calls[0]?.[0]?.upstream_balance_probe_enabled).toBe(true)
   })
 
   it('waits for the initial upstream billing probe before refreshing the account list', async () => {

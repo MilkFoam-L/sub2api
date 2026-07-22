@@ -359,6 +359,17 @@ describe('BulkEditAccountModal', () => {
     })
   })
 
+  it('OpenAI API Key 批量编辑可统一开启上游余额自动探测', async () => {
+    const wrapper = mountModal({ selectedPlatforms: ['openai'], selectedTypes: ['apikey'] })
+    await wrapper.get('#bulk-edit-upstream-balance-auto-probe-enabled').setValue(true)
+    await wrapper.get('#bulk-edit-account-form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(adminAPI.accounts.bulkUpdate).toHaveBeenCalledWith([1, 2], {
+      upstream_balance_probe_enabled: true
+    })
+  })
+
   it('OpenAI API Key 批量编辑可统一关闭上游倍率自动探测', async () => {
     const wrapper = mountModal({
       selectedPlatforms: ['openai'],

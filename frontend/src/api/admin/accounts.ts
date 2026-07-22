@@ -21,6 +21,7 @@ import type {
   OpenAICodexPATCreateRequest,
   CheckMixedChannelRequest,
   CheckMixedChannelResponse,
+  UpstreamBalanceProbeResult,
   UpstreamBillingProbeResult,
   UpstreamBillingProbeSettings
 } from '@/types'
@@ -950,6 +951,19 @@ export async function probeUpstreamBillingBatch(accountIds: number[]): Promise<U
   return data.results
 }
 
+export async function probeUpstreamBalance(id: number): Promise<UpstreamBalanceProbeResult> {
+  const { data } = await apiClient.post<UpstreamBalanceProbeResult>(`/admin/accounts/${id}/upstream-balance-probe`)
+  return data
+}
+
+export async function probeUpstreamBalanceBatch(accountIds: number[]): Promise<UpstreamBalanceProbeResult[]> {
+  const { data } = await apiClient.post<{ results: UpstreamBalanceProbeResult[] }>(
+    '/admin/accounts/upstream-balance-probe/batch',
+    { account_ids: accountIds }
+  )
+  return data.results
+}
+
 export const accountsAPI = {
   list,
   listWithEtag,
@@ -1005,7 +1019,9 @@ export const accountsAPI = {
   updateUpstreamBillingProbeSettings,
   setUpstreamBillingProbeEnabled,
   probeUpstreamBilling,
-  probeUpstreamBillingBatch
+  probeUpstreamBillingBatch,
+  probeUpstreamBalance,
+  probeUpstreamBalanceBatch
 }
 
 export default accountsAPI

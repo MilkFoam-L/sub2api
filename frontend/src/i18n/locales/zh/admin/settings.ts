@@ -326,6 +326,16 @@ export default {
         saved: '上游倍率自动探测设置已保存',
         saveFailed: '保存上游倍率自动探测设置失败'
       },
+      upstreamBalanceProbe: {
+        title: '上游余额自动探测',
+        description: '定期获取 OpenAI API Key 所连接上游公开的余额或额度。',
+        enabled: '启用全局余额探测',
+        enabledHint: '仅对账号自身已启用余额探测的账号执行定时探测；手动刷新不受影响。',
+        intervalMinutes: '探测周期（分钟）',
+        intervalHint: '范围 5–1440 分钟。',
+        saved: '上游余额自动探测设置已保存',
+        saveFailed: '保存上游余额自动探测设置失败'
+      },
       gatewayForwarding: {
         title: '请求转发行为',
         description: '控制请求转发到上游 OAuth 账号时的行为',

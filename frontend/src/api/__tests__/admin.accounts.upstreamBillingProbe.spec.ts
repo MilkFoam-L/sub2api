@@ -12,6 +12,8 @@ vi.mock('@/api/client', () => ({
 
 import {
   getUpstreamBillingProbeSettings,
+  probeUpstreamBalance,
+  probeUpstreamBalanceBatch,
   probeUpstreamBilling,
   probeUpstreamBillingBatch,
   setUpstreamBillingProbeEnabled,
@@ -49,5 +51,17 @@ describe('admin account upstream billing probe API', () => {
     expect(put).toHaveBeenCalledWith('/admin/accounts/7/upstream-billing-probe', { enabled: true })
     expect(post).toHaveBeenNthCalledWith(1, '/admin/accounts/7/upstream-billing-probe')
     expect(post).toHaveBeenNthCalledWith(2, '/admin/accounts/upstream-billing-probe/batch', { account_ids: [7] })
+  })
+
+  it('uses dedicated upstream balance account and batch endpoints', async () => {
+    const result = { account_id: 7, snapshot: { status: 'ok', data: { remaining: 12 } } }
+    post.mockResolvedValueOnce({ data: result })
+    post.mockResolvedValueOnce({ data: { results: [result] } })
+
+    await expect(probeUpstreamBalance(7)).resolves.toEqual(result)
+    await expect(probeUpstreamBalanceBatch([7])).resolves.toEqual([result])
+
+    expect(post).toHaveBeenNthCalledWith(1, '/admin/accounts/7/upstream-balance-probe')
+    expect(post).toHaveBeenNthCalledWith(2, '/admin/accounts/upstream-balance-probe/batch', { account_ids: [7] })
   })
 })

@@ -11,7 +11,8 @@ const {
   getAllProxies,
   getAllGroups,
   bulkDeleteAccounts,
-  probeUpstreamBillingBatch
+  probeUpstreamBillingBatch,
+  probeUpstreamBalanceBatch
 } = vi.hoisted(() => ({
   listAccounts: vi.fn(),
   listWithEtag: vi.fn(),
@@ -20,7 +21,8 @@ const {
   getAllProxies: vi.fn(),
   getAllGroups: vi.fn(),
   bulkDeleteAccounts: vi.fn(),
-  probeUpstreamBillingBatch: vi.fn()
+  probeUpstreamBillingBatch: vi.fn(),
+  probeUpstreamBalanceBatch: vi.fn()
 }))
 
 vi.mock('@/api/admin', () => ({
@@ -35,6 +37,8 @@ vi.mock('@/api/admin', () => ({
       batchClearError: vi.fn(),
       batchRefresh: vi.fn(),
       probeUpstreamBillingBatch,
+      probeUpstreamBalanceBatch,
+      probeUpstreamBalance: vi.fn(),
       toggleSchedulable: vi.fn()
     },
     proxies: {
@@ -85,7 +89,7 @@ const DataTableStub = {
 
 const AccountBulkActionsBarStub = {
   props: ['selectedIds'],
-  emits: ['edit-filtered', 'delete-filtered', 'probe-upstream-billing'],
+  emits: ['edit-filtered', 'delete-filtered', 'probe-upstream-billing', 'probe-upstream-balance'],
   template: `
     <div>
       <button data-test="delete-filtered" @click="$emit('delete-filtered')">delete filtered</button>
@@ -127,6 +131,7 @@ describe('admin AccountsView bulk edit scope', () => {
     getAllGroups.mockReset()
     bulkDeleteAccounts.mockReset()
     probeUpstreamBillingBatch.mockReset()
+    probeUpstreamBalanceBatch.mockReset()
 
     listAccounts.mockResolvedValue({
       items: [],
@@ -146,6 +151,7 @@ describe('admin AccountsView bulk edit scope', () => {
     getAllGroups.mockResolvedValue([])
     bulkDeleteAccounts.mockResolvedValue({ success: 2, failed: 0, success_ids: [7, 11], failed_ids: [], results: [] })
     probeUpstreamBillingBatch.mockResolvedValue([])
+    probeUpstreamBalanceBatch.mockResolvedValue([])
   })
 
   it('opens bulk edit in filtered-results mode from the bulk actions dropdown', async () => {
@@ -187,6 +193,7 @@ describe('admin AccountsView bulk edit scope', () => {
     })
 
     await flushPromises()
+    expect(wrapper.findAll('[data-test="column-key"]').map(node => node.text())).toContain('upstream_balance')
     await wrapper.get('[data-test="edit-filtered"]').trigger('click')
     await flushPromises()
 

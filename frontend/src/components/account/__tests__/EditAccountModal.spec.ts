@@ -604,6 +604,7 @@ describe('EditAccountModal', () => {
 
     expect(updateAccountMock).toHaveBeenCalledTimes(1)
     expect(updateAccountMock.mock.calls[0]?.[1]?.extra?.upstream_billing_probe_enabled).toBe(true)
+    expect(updateAccountMock.mock.calls[0]?.[1]?.extra?.upstream_balance_probe_enabled).toBe(false)
   })
 
   it('clears OpenAI APIKey Responses override when set back to auto', async () => {

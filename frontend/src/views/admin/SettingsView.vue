@@ -4161,7 +4161,7 @@
                     max="1440"
                     class="input w-32"
                     data-testid="upstream-billing-probe-interval"
-                    @keydown.enter.prevent="saveUpstreamBillingProbeSettings"
+                    @keydown.enter.prevent="saveUpstreamBillingProbeSettings()"
                   />
                   <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
                     {{ t("admin.settings.upstreamBillingProbe.intervalHint") }}
@@ -4176,13 +4176,80 @@
                     class="btn btn-primary btn-sm"
                     :disabled="upstreamBillingProbeSaving"
                     data-testid="upstream-billing-probe-save"
-                    @click="saveUpstreamBillingProbeSettings"
+                    @click="saveUpstreamBillingProbeSettings()"
                   >
                     {{
                       upstreamBillingProbeSaving
                         ? t("common.saving")
                         : t("common.save")
                     }}
+                  </button>
+                </div>
+              </template>
+            </div>
+          </div>
+
+          <!-- Upstream Balance Probe Settings -->
+          <div class="card" data-testid="upstream-balance-probe-settings">
+            <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
+              <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+                {{ t("admin.settings.upstreamBalanceProbe.title") }}
+              </h2>
+              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                {{ t("admin.settings.upstreamBalanceProbe.description") }}
+              </p>
+            </div>
+            <div class="space-y-5 p-6">
+              <div v-if="upstreamBillingProbeLoading" class="flex items-center gap-2 text-gray-500">
+                <div class="h-4 w-4 animate-spin rounded-full border-b-2 border-primary-600"></div>
+                {{ t("common.loading") }}
+              </div>
+              <template v-else>
+                <div class="flex items-center justify-between gap-4">
+                  <div>
+                    <label class="font-medium text-gray-900 dark:text-white">
+                      {{ t("admin.settings.upstreamBalanceProbe.enabled") }}
+                    </label>
+                    <p class="text-sm text-gray-500 dark:text-gray-400">
+                      {{ t("admin.settings.upstreamBalanceProbe.enabledHint") }}
+                    </p>
+                  </div>
+                  <Toggle
+                    v-model="upstreamBillingProbeForm.balance_enabled"
+                    :aria-label="t('admin.settings.upstreamBalanceProbe.enabled')"
+                    data-testid="upstream-balance-probe-enabled"
+                  />
+                </div>
+                <div
+                  v-if="upstreamBillingProbeForm.balance_enabled"
+                  class="border-t border-gray-100 pt-4 dark:border-dark-700"
+                >
+                  <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300" for="upstream-balance-probe-interval">
+                    {{ t("admin.settings.upstreamBalanceProbe.intervalMinutes") }}
+                  </label>
+                  <input
+                    id="upstream-balance-probe-interval"
+                    v-model.number="upstreamBillingProbeForm.balance_interval_minutes"
+                    type="number"
+                    min="5"
+                    max="1440"
+                    class="input w-32"
+                    data-testid="upstream-balance-probe-interval"
+                    @keydown.enter.prevent="saveUpstreamBillingProbeSettings('balance')"
+                  />
+                  <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                    {{ t("admin.settings.upstreamBalanceProbe.intervalHint") }}
+                  </p>
+                </div>
+                <div class="flex justify-end border-t border-gray-100 pt-4 dark:border-dark-700">
+                  <button
+                    type="button"
+                    class="btn btn-primary btn-sm"
+                    :disabled="upstreamBillingProbeSaving"
+                    data-testid="upstream-balance-probe-save"
+                    @click="saveUpstreamBillingProbeSettings('balance')"
+                  >
+                    {{ upstreamBillingProbeSaving ? t("common.saving") : t("common.save") }}
                   </button>
                 </div>
               </template>
@@ -7910,6 +7977,8 @@ const upstreamBillingProbeSaving = ref(false);
 const upstreamBillingProbeForm = reactive({
   enabled: true,
   interval_minutes: 30,
+  balance_enabled: true,
+  balance_interval_minutes: 30,
 });
 
 // Overload Cooldown (529) 状态
@@ -10531,19 +10600,19 @@ async function loadUpstreamBillingProbeSettings() {
   }
 }
 
-async function saveUpstreamBillingProbeSettings() {
+async function saveUpstreamBillingProbeSettings(section: 'billing' | 'balance' = 'billing') {
   upstreamBillingProbeSaving.value = true;
   try {
     const updated = await adminAPI.accounts.updateUpstreamBillingProbeSettings({
       ...upstreamBillingProbeForm,
     });
     Object.assign(upstreamBillingProbeForm, updated);
-    appStore.showSuccess(t("admin.settings.upstreamBillingProbe.saved"));
+    appStore.showSuccess(t(section === "balance" ? "admin.settings.upstreamBalanceProbe.saved" : "admin.settings.upstreamBillingProbe.saved"));
   } catch (error: unknown) {
     appStore.showError(
       extractApiErrorMessage(
         error,
-        t("admin.settings.upstreamBillingProbe.saveFailed"),
+        t(section === "balance" ? "admin.settings.upstreamBalanceProbe.saveFailed" : "admin.settings.upstreamBillingProbe.saveFailed"),
       ),
     );
   } finally {

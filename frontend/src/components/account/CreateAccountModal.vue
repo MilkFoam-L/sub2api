@@ -1160,6 +1160,23 @@
           />
         </div>
 
+        <div
+          v-if="form.platform === 'openai'"
+          class="flex items-center justify-between gap-4 border-t border-gray-200 pt-4 dark:border-dark-600"
+        >
+          <div>
+            <label class="input-label mb-0">{{ t('admin.accounts.upstreamBalance.autoProbe') }}</label>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              {{ t('admin.accounts.upstreamBalance.autoProbeHint') }}
+            </p>
+          </div>
+          <Toggle
+            v-model="upstreamBalanceAutoProbeEnabled"
+            data-testid="upstream-balance-auto-probe"
+            :aria-label="t('admin.accounts.upstreamBalance.autoProbe')"
+          />
+        </div>
+
         <!-- Gemini API Key tier selection -->
         <div v-if="form.platform === 'gemini'">
           <label class="input-label">{{ t('admin.accounts.gemini.tier.label') }}</label>
@@ -3687,6 +3704,7 @@ const addMethod = ref<AddMethod>('oauth') // For oauth-based: 'oauth' or 'setup-
 const apiKeyBaseUrl = ref('https://api.anthropic.com')
 const apiKeyValue = ref('')
 const upstreamBillingAutoProbeEnabled = ref(true)
+const upstreamBalanceAutoProbeEnabled = ref(true)
 
 const syncPreviewCredentials = computed(() => {
   if (!apiKeyValue.value) return undefined
@@ -4624,6 +4642,7 @@ const resetForm = () => {
   apiKeyBaseUrl.value = 'https://api.anthropic.com'
   apiKeyValue.value = ''
   upstreamBillingAutoProbeEnabled.value = true
+  upstreamBalanceAutoProbeEnabled.value = true
   editQuotaLimit.value = null
   editQuotaDailyLimit.value = null
   editQuotaWeeklyLimit.value = null
@@ -5125,6 +5144,8 @@ const handleSubmit = async () => {
     extra,
     upstream_billing_probe_enabled:
       form.platform === 'openai' ? upstreamBillingAutoProbeEnabled.value : undefined,
+    upstream_balance_probe_enabled:
+      form.platform === 'openai' ? upstreamBalanceAutoProbeEnabled.value : undefined,
     auto_pause_on_expired: autoPauseOnExpired.value
   })
 }

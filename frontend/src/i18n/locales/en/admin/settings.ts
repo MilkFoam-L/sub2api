@@ -333,6 +333,16 @@ export default {
         saved: 'Upstream rate auto detection settings saved',
         saveFailed: 'Failed to save upstream rate auto detection settings'
       },
+      upstreamBalanceProbe: {
+        title: 'Upstream Balance Auto Detection',
+        description: 'Periodically retrieve the balance or quota exposed by upstream sites for OpenAI API keys.',
+        enabled: 'Enable global balance detection',
+        enabledHint: 'Scheduled detection runs only for accounts that also enable balance detection. Manual refresh remains available.',
+        intervalMinutes: 'Detection interval (minutes)',
+        intervalHint: 'Range: 5–1440 minutes.',
+        saved: 'Upstream balance auto detection settings saved',
+        saveFailed: 'Failed to save upstream balance auto detection settings'
+      },
       gatewayForwarding: {
         title: 'Request Forwarding',
         description: 'Control how requests are forwarded to upstream OAuth accounts',
