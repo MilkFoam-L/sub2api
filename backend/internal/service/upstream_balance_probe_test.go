@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 )
@@ -360,6 +361,65 @@ func TestProbeBalanceNewAPIUserClassifiesInvalidResponses(t *testing.T) {
 			require.Nil(t, snap.Data)
 		})
 	}
+}
+
+func TestUpstreamProbeCycleDoesNotLetSlowBillingBlockBalanceRefresh(t *testing.T) {
+	billingStarted := make(chan struct{})
+	balanceStarted := make(chan struct{})
+	releaseBilling := make(chan struct{})
+	repo := &upstreamBillingProbeAccountRepo{accounts: map[int64]*Account{
+		90: {
+			ID: 90, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Status: StatusActive,
+			Credentials: map[string]any{"api_key": "billing-key", "base_url": "https://billing.example"},
+			Extra:       map[string]any{UpstreamBillingProbeEnabledExtraKey: true},
+		},
+		91: {
+			ID: 91, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Status: StatusActive,
+			Credentials: map[string]any{"base_url": "https://balance.example", "newapi_access_token": "dashboard-token"},
+			Extra:       map[string]any{UpstreamBalanceProbeEnabledExtraKey: true},
+		},
+	}}
+	upstream := &upstreamBillingProbeHTTPStub{responseForURL: func(req *http.Request) (*http.Response, error) {
+		body := `{"object":"sub2api.key_billing","schema_version":1,"billing_scope":"token","group_rate_multiplier":1,"resolved_rate_multiplier":1,"peak_rate_enabled":false,"effective_rate_multiplier":1,"observed_at":"2026-07-27T00:00:00Z"}`
+		if req.URL.Host == "billing.example" {
+			close(billingStarted)
+			<-releaseBilling
+		} else if strings.HasSuffix(req.URL.Path, "/api/user/self") {
+			close(balanceStarted)
+			body = `{"success":true,"data":{"quota":100,"used_quota":50}}`
+		} else if strings.HasSuffix(req.URL.Path, "/api/status") {
+			body = `{"success":true,"data":{"quota_per_unit":50}}`
+		}
+		return &http.Response{StatusCode: http.StatusOK, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(body))}, nil
+	}}
+	svc := newUpstreamBillingProbeTestService(repo, upstream, &upstreamBillingProbeSettingRepo{})
+	cycleDone := make(chan struct{})
+	go func() {
+		svc.runCycle(context.Background())
+		close(cycleDone)
+	}()
+
+	select {
+	case <-billingStarted:
+	case <-time.After(time.Second):
+		t.Fatal("billing probe did not start")
+	}
+	select {
+	case <-balanceStarted:
+	case <-time.After(time.Second):
+		t.Fatal("balance refresh was blocked by the slow billing probe")
+	}
+	close(releaseBilling)
+	select {
+	case <-cycleDone:
+	case <-time.After(2 * time.Second):
+		t.Fatal("probe cycle did not finish")
+	}
+
+	snapshot := decodeUpstreamBalanceProbeSnapshot(repo.accounts[91].Extra)
+	require.NotNil(t, snapshot)
+	require.Equal(t, UpstreamBillingProbeStatusOK, snapshot.Status)
+	require.Equal(t, float64(2), snapshot.Data["remaining"])
 }
 
 func TestProbeBalanceFallsBackToNewAPIOnlyAfter404(t *testing.T) {

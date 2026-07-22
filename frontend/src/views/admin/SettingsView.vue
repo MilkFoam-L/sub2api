@@ -4245,11 +4245,11 @@
                   <button
                     type="button"
                     class="btn btn-primary btn-sm"
-                    :disabled="upstreamBillingProbeSaving"
+                    :disabled="upstreamBalanceProbeSaving"
                     data-testid="upstream-balance-probe-save"
                     @click="saveUpstreamBillingProbeSettings('balance')"
                   >
-                    {{ upstreamBillingProbeSaving ? t("common.saving") : t("common.save") }}
+                    {{ upstreamBalanceProbeSaving ? t("common.saving") : t("common.save") }}
                   </button>
                 </div>
               </template>
@@ -7974,6 +7974,7 @@ const subscriptionGroups = ref<AdminGroup[]>([]);
 // Upstream billing probe state
 const upstreamBillingProbeLoading = ref(true);
 const upstreamBillingProbeSaving = ref(false);
+const upstreamBalanceProbeSaving = ref(false);
 const upstreamBillingProbeForm = reactive({
   enabled: true,
   interval_minutes: 30,
@@ -10601,7 +10602,8 @@ async function loadUpstreamBillingProbeSettings() {
 }
 
 async function saveUpstreamBillingProbeSettings(section: 'billing' | 'balance' = 'billing') {
-  upstreamBillingProbeSaving.value = true;
+  const saving = section === "balance" ? upstreamBalanceProbeSaving : upstreamBillingProbeSaving;
+  saving.value = true;
   try {
     const updated = await adminAPI.accounts.updateUpstreamBillingProbeSettings({
       ...upstreamBillingProbeForm,
@@ -10616,7 +10618,7 @@ async function saveUpstreamBillingProbeSettings(section: 'billing' | 'balance' =
       ),
     );
   } finally {
-    upstreamBillingProbeSaving.value = false;
+    saving.value = false;
   }
 }
 

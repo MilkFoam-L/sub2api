@@ -1044,6 +1044,30 @@ describe("admin SettingsView payment visible method controls", () => {
     });
   });
 
+  it("keeps billing and balance save loading states independent", async () => {
+    let finishSave: (() => void) | undefined;
+    updateUpstreamBillingProbeSettings.mockImplementationOnce(
+      (payload) => new Promise((resolve) => {
+        finishSave = () => resolve(payload);
+      }),
+    );
+
+    const wrapper = mountView();
+    await flushPromises();
+    await openGatewayTab(wrapper);
+
+    const billingSave = wrapper.get('[data-testid="upstream-billing-probe-save"]');
+    const balanceSave = wrapper.get('[data-testid="upstream-balance-probe-save"]');
+    await balanceSave.trigger("click");
+
+    expect(balanceSave.attributes("disabled")).toBeDefined();
+    expect(billingSave.attributes("disabled")).toBeUndefined();
+
+    finishSave?.();
+    await flushPromises();
+    expect(balanceSave.attributes("disabled")).toBeUndefined();
+  });
+
   it("places and explains rate controls for both scheduling modes", async () => {
     const wrapper = mountView();
 

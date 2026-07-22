@@ -300,8 +300,7 @@ func (s *UpstreamBillingProbeService) Stop() {
 
 func (s *UpstreamBillingProbeService) runLoop() {
 	defer s.wg.Done()
-	_ = s.RunDue(s.parentCtx)
-	_ = s.RunBalanceDue(s.parentCtx)
+	s.runCycle(s.parentCtx)
 	ticker := time.NewTicker(upstreamBillingProbeCycleInterval)
 	defer ticker.Stop()
 	for {
@@ -309,14 +308,26 @@ func (s *UpstreamBillingProbeService) runLoop() {
 		case <-s.parentCtx.Done():
 			return
 		case <-ticker.C:
-			if err := s.RunDue(s.parentCtx); err != nil {
-				logger.LegacyPrintf("service.upstream_billing_probe", "run_due_failed: err=%v", err)
-			}
-			if err := s.RunBalanceDue(s.parentCtx); err != nil {
-				logger.LegacyPrintf("service.upstream_balance_probe", "run_due_failed: err=%v", err)
-			}
+			s.runCycle(s.parentCtx)
 		}
 	}
+}
+
+func (s *UpstreamBillingProbeService) runCycle(ctx context.Context) {
+	var group errgroup.Group
+	group.Go(func() error {
+		if err := s.RunDue(ctx); err != nil {
+			logger.LegacyPrintf("service.upstream_billing_probe", "run_due_failed: err=%v", err)
+		}
+		return nil
+	})
+	group.Go(func() error {
+		if err := s.RunBalanceDue(ctx); err != nil {
+			logger.LegacyPrintf("service.upstream_balance_probe", "run_due_failed: err=%v", err)
+		}
+		return nil
+	})
+	_ = group.Wait()
 }
 
 // RunDue executes at most one bounded batch of due accounts.
