@@ -4,7 +4,7 @@
     <div v-else v-html="homeContent"></div>
   </div>
 
-  <div v-else class="relative min-h-screen overflow-x-hidden bg-background text-foreground">
+  <div v-else class="relative min-h-screen overflow-x-clip bg-background text-foreground">
     <div class="pointer-events-none absolute inset-0">
       <div class="absolute inset-0 bg-[radial-gradient(circle_at_15%_10%,hsl(var(--primary)/0.16),transparent_28%),radial-gradient(circle_at_85%_20%,hsl(var(--accent)/0.32),transparent_30%),linear-gradient(hsl(var(--border)/0.35)_1px,transparent_1px),linear-gradient(90deg,hsl(var(--border)/0.35)_1px,transparent_1px)] bg-[size:auto,auto,72px_72px,72px_72px]"></div>
     </div>

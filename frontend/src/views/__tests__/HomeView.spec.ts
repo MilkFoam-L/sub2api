@@ -61,7 +61,8 @@ describe('HomeView hero layout', () => {
   it('shrinks the navigation on scroll and expands again at the top', async () => {
     const wrapper = mountHome()
 
-    expect(wrapper.classes()).toContain('overflow-x-hidden')
+    expect(wrapper.classes()).toContain('overflow-x-clip')
+    expect(wrapper.classes()).not.toContain('overflow-x-hidden')
     expect(wrapper.classes()).not.toContain('overflow-hidden')
     expect(wrapper.get('[data-test="home-nav"]').classes()).toContain('sticky')
     expect(wrapper.get('[data-test="home-nav"]').attributes('data-state')).toBe('expanded')
