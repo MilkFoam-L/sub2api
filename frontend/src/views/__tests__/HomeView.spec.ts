@@ -90,6 +90,18 @@ describe('HomeView hero layout', () => {
     expect(wrapper.text()).not.toContain('GitHub')
   })
 
+  it('shows the privacy commitment before the final call to action', () => {
+    const wrapper = mountHome()
+    const privacyCard = wrapper.get('[data-test="privacy-card"]')
+    const finalCta = wrapper.get('[data-test="home-cta"]')
+
+    expect(privacyCard.text()).toContain('隐私承诺')
+    expect(privacyCard.text()).toContain('不记录任何 API 请求内容')
+    expect(privacyCard.text()).toContain('不向第三方出售用户数据')
+    expect(privacyCard.text()).toContain('不会将用户数据用于广告投放或模型训练')
+    expect(privacyCard.element.compareDocumentPosition(finalCta.element) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
   it('keeps endpoint feature card text inside its borders', () => {
     const wrapper = mountHome()
     const card = wrapper.get('[data-test="endpoint-feature-card-openai"]')

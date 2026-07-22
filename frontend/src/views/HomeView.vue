@@ -179,8 +179,27 @@
         </div>
       </section>
 
-      <section class="mx-auto max-w-7xl px-5 pb-20">
-        <div class="rounded-[2rem] border border-primary/20 bg-primary px-6 py-10 text-center text-primary-foreground shadow-2xl shadow-primary/20">
+    <section class="mx-auto max-w-7xl px-5 pb-6" aria-labelledby="privacy-card-title">
+      <div data-test="privacy-card" class="relative overflow-hidden rounded-[2rem] border border-primary/20 bg-card px-6 py-8 shadow-sm lg:px-10 lg:py-10">
+        <div class="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_10%_15%,hsl(var(--primary)/0.12),transparent_34%),radial-gradient(circle_at_92%_90%,hsl(var(--accent)/0.22),transparent_30%)]"></div>
+        <div class="relative grid gap-6 lg:grid-cols-[0.75fr_1.25fr] lg:items-center">
+          <div class="flex items-start gap-4">
+            <div class="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-primary/10 text-primary" aria-hidden="true">
+              <Icon name="shield" size="md" />
+            </div>
+            <div>
+              <p class="text-sm font-medium text-primary">{{ text.privacy.kicker }}</p>
+              <h2 id="privacy-card-title" class="mt-2 text-2xl font-semibold sm:text-3xl">{{ text.privacy.title }}</h2>
+            </div>
+          </div>
+          <p class="text-sm leading-7 text-muted-foreground sm:text-base">{{ text.privacy.desc }}</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="mx-auto max-w-7xl px-5 pb-20">
+      <div data-test="home-cta" class="rounded-[2rem] border border-primary/20 bg-primary px-6 py-10 text-center text-primary-foreground shadow-2xl shadow-primary/20">
+
           <h2 class="text-3xl font-semibold">{{ text.cta.title }}</h2>
           <p class="mx-auto mt-3 max-w-2xl text-sm leading-6 text-primary-foreground/80">{{ text.cta.desc }}</p>
           <router-link :to="isAuthenticated ? dashboardPath : '/login'" class="mt-6 inline-flex rounded-2xl bg-primary-foreground px-6 py-3 text-sm font-semibold text-primary hover:bg-primary-foreground/90">{{ text.cta.button }}</router-link>
@@ -286,6 +305,11 @@ const text = computed(() => ({
     { title: pick('配置分组和策略', 'Configure policies'), desc: pick('设置分组倍率、模型白名单、并发和优先级。', 'Set group pricing, allowlists, concurrency, and priority.') },
     { title: pick('交付统一接口', 'Ship one endpoint'), desc: pick('将 Base URL 与 Key 交付给应用或团队成员。', 'Share one Base URL and key with apps or teammates.') }
   ] },
+  privacy: {
+    kicker: pick('隐私承诺', 'Privacy commitment'),
+    title: pick('您的请求，只用于提供服务', 'Your requests are used only to provide the service'),
+    desc: pick('我们不记录任何 API 请求内容，不向第三方出售用户数据，也不会将用户数据用于广告投放或模型训练。系统仅在提供服务所必需的范围内，对相关数据进行临时处理。', 'We do not log API request content, sell user data to third parties, or use it for advertising or model training. Data is processed temporarily only as required to operate the service.')
+  },
   cta: { title: pick('准备把 AI 能力交付给团队了吗？', 'Ready to deliver AI capabilities to your team?'), desc: pick('用统一网关管理模型、账号、成本与安全策略，今天就开始。', 'Manage models, accounts, costs, and policies through one gateway.'), button: pick('进入控制台', 'Open Console') }
 }))
 
