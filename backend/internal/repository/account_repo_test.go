@@ -28,10 +28,12 @@ func TestUpstreamBillingRateSortExpressionRejectsDeterministicNewAPIFailure(t *t
 	require.Contains(t, expression, "left(account_extra #>> '{upstream_billing_probe,last_error}', 7) <> 'newapi_'")
 }
 
-func TestUpstreamBalanceSortExpressionUsesOnlyNumericRemaining(t *testing.T) {
+func TestUpstreamBalanceSortExpressionFallsBackToRawQuotaAndRanksUnlimited(t *testing.T) {
 	expression := upstreamBalanceSortExpression("account_extra")
 
 	require.Contains(t, expression, "jsonb_typeof(account_extra #> '{upstream_balance_probe,data,remaining}') = 'number'")
+	require.Contains(t, expression, "jsonb_typeof(account_extra #> '{upstream_balance_probe,data,raw_remaining}') = 'number'")
+	require.Contains(t, expression, "account_extra #>> '{upstream_balance_probe,data,unlimited}' = 'true'")
 	require.Contains(t, expression, "::numeric")
 }
 

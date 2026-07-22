@@ -607,6 +607,10 @@ type accountProbeEnabledAtomicUpdater interface {
 	UpdateWithUpstreamBillingProbeEnabled(context.Context, *Account, bool) error
 }
 
+type accountProbesEnabledAtomicUpdater interface {
+	UpdateWithUpstreamProbesEnabled(context.Context, *Account, *bool, *bool) error
+}
+
 func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *UpdateAccountInput) (*Account, error) {
 	account, err := s.accountRepo.GetByID(ctx, id)
 	if err != nil {
@@ -799,8 +803,20 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 		}
 	}
 
+	if input.BalanceProbeEnabled != nil && !isUpstreamBillingProbeAccount(account) {
+		return nil, ErrUpstreamBillingProbeAccountInvalid
+	}
+
 	probeEnabledAppliedAtomically := false
-	if requestedProbeEnabledUpdate != nil && isUpstreamBillingProbeAccount(account) {
+	if (requestedProbeEnabledUpdate != nil || input.BalanceProbeEnabled != nil) && isUpstreamBillingProbeAccount(account) {
+		if updater, ok := s.accountRepo.(accountProbesEnabledAtomicUpdater); ok {
+			if err := updater.UpdateWithUpstreamProbesEnabled(ctx, account, requestedProbeEnabledUpdate, input.BalanceProbeEnabled); err != nil {
+				return nil, err
+			}
+			probeEnabledAppliedAtomically = true
+		}
+	}
+	if !probeEnabledAppliedAtomically && requestedProbeEnabledUpdate != nil && isUpstreamBillingProbeAccount(account) {
 		if updater, ok := s.accountRepo.(accountProbeEnabledAtomicUpdater); ok {
 			if err := updater.UpdateWithUpstreamBillingProbeEnabled(ctx, account, *requestedProbeEnabledUpdate); err != nil {
 				return nil, err
@@ -820,7 +836,7 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 			}
 		}
 	}
-	if input.BalanceProbeEnabled != nil && isUpstreamBillingProbeAccount(account) {
+	if input.BalanceProbeEnabled != nil && isUpstreamBillingProbeAccount(account) && !probeEnabledAppliedAtomically {
 		if err := s.accountRepo.UpdateExtra(ctx, account.ID, map[string]any{UpstreamBalanceProbeEnabledExtraKey: *input.BalanceProbeEnabled}); err != nil {
 			return nil, err
 		}
@@ -928,14 +944,14 @@ func (s *adminServiceImpl) BulkUpdateAccounts(ctx context.Context, input *BulkUp
 
 	// 预取所有目标账号，供凭据守卫/代理守卫/混合渠道检查共用，避免多次 DB 查询。
 	var cachedTargets []*Account
-	if len(input.Credentials) > 0 || input.ProxyID != nil || needMixedChannelCheck || hasLongContextBillingUpdate || input.ProbeEnabled != nil {
+	if len(input.Credentials) > 0 || input.ProxyID != nil || needMixedChannelCheck || hasLongContextBillingUpdate || input.ProbeEnabled != nil || input.BalanceProbeEnabled != nil {
 		loaded, err := s.accountRepo.GetByIDs(ctx, input.AccountIDs)
 		if err != nil {
 			return nil, err
 		}
 		cachedTargets = loaded
 	}
-	if input.ProbeEnabled != nil {
+	if input.ProbeEnabled != nil || input.BalanceProbeEnabled != nil {
 		targetsByID := make(map[int64]*Account, len(cachedTargets))
 		for _, account := range cachedTargets {
 			if account != nil {
@@ -1023,9 +1039,10 @@ func (s *adminServiceImpl) BulkUpdateAccounts(ctx context.Context, input *BulkUp
 
 	// Prepare bulk updates for columns and JSONB fields.
 	repoUpdates := AccountBulkUpdate{
-		Credentials:  input.Credentials,
-		Extra:        input.Extra,
-		ProbeEnabled: input.ProbeEnabled,
+		Credentials:         input.Credentials,
+		Extra:               input.Extra,
+		ProbeEnabled:        input.ProbeEnabled,
+		BalanceProbeEnabled: input.BalanceProbeEnabled,
 	}
 	if input.ProbeEnabled != nil {
 		if repoUpdates.Extra == nil {

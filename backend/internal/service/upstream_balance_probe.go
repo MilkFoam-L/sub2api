@@ -19,6 +19,7 @@ import (
 const (
 	UpstreamBalanceProbeExtraKey        = "upstream_balance_probe"
 	UpstreamBalanceProbeEnabledExtraKey = "upstream_balance_probe_enabled"
+	upstreamBalanceProbeMaxPerCycle     = 12
 )
 
 type UpstreamBalanceProbeSnapshot struct {
@@ -92,7 +93,11 @@ func (s *UpstreamBillingProbeService) ProbeBalanceAccount(ctx context.Context, i
 }
 
 func (s *UpstreamBillingProbeService) probeBalanceAccountWithMode(ctx context.Context, id int64, interval int, requireEnabled bool) (*UpstreamBalanceProbeSnapshot, error) {
-	key := "balance:" + strconv.FormatInt(id, 10)
+	mode := "manual"
+	if requireEnabled {
+		mode = "scheduled"
+	}
+	key := "balance:" + mode + ":" + strconv.FormatInt(id, 10)
 	value, err, _ := s.probeGroup.Do(key, func() (any, error) {
 		select {
 		case s.probeSlots <- struct{}{}:
@@ -171,7 +176,7 @@ func (s *UpstreamBillingProbeService) RunBalanceDue(ctx context.Context) error {
 
 	var accounts []Account
 	if l, ok := s.accountRepo.(upstreamBalanceDueLister); ok {
-		accounts, err = l.ListDueUpstreamBalanceProbeAccounts(ctx, s.currentTime(), upstreamBillingProbeMaxPerCycle)
+		accounts, err = l.ListDueUpstreamBalanceProbeAccounts(ctx, s.currentTime(), upstreamBalanceProbeMaxPerCycle)
 	} else {
 		accounts, err = s.accountRepo.FindByExtraField(ctx, UpstreamBalanceProbeEnabledExtraKey, true)
 	}
@@ -267,14 +272,24 @@ func (s *UpstreamBillingProbeService) probeLoadedBalanceAccount(ctx context.Cont
 	if tr.StatusCode < 200 || tr.StatusCode >= 300 {
 		return fail(classifyNewAPIBalanceHTTPError(tr.StatusCode), tr.StatusCode)
 	}
+	unlimitedData, pe := parseNewAPITokenUsageResponseRaw(tb, 0)
+	if pe != nil {
+		return fail("newapi_invalid_response", tr.StatusCode)
+	}
+	if unlimited, _ := unlimitedData["unlimited"].(bool); unlimited {
+		return s.saveBalance(ctx, a, now, interval, unlimitedData, tr.StatusCode)
+	}
 	statusURL, urlErr := buildNewAPIControlEndpointURL(base, "/api/status")
 	if urlErr != nil {
 		return fail("invalid_base_url", 0)
 	}
 	sr, sb, se := s.doProbeRequest(ctx, a, tlsProfile, proxyURL, key, http.MethodGet, statusURL, upstreamBillingProbeMaxBodyBytes, false)
-	quota := 0.0
-	if se == nil && sr.StatusCode >= 200 && sr.StatusCode < 300 {
-		quota, _ = parseNewAPIQuotaPerUnitResponse(sb)
+	if se != nil || sr.StatusCode < 200 || sr.StatusCode >= 300 {
+		return fail("newapi_quota_unit_unavailable", statusCodeOf(sr))
+	}
+	quota, quotaErr := parseNewAPIQuotaPerUnitResponse(sb)
+	if quotaErr != nil {
+		return fail("newapi_quota_unit_unavailable", sr.StatusCode)
 	}
 	data, pe := parseNewAPITokenUsageResponseRaw(tb, quota)
 	if pe != nil {
@@ -283,14 +298,19 @@ func (s *UpstreamBillingProbeService) probeLoadedBalanceAccount(ctx context.Cont
 	return s.saveBalance(ctx, a, now, interval, data, tr.StatusCode)
 }
 func parseNewAPITokenUsageResponseRaw(body []byte, quota float64) (map[string]any, error) {
+	if err := rejectDuplicateJSONFields(body); err != nil {
+		return nil, err
+	}
 	var p map[string]any
 	if err := json.Unmarshal(body, &p); err != nil {
 		return nil, err
 	}
-	if code, present := p["code"]; present {
-		if ok, valid := code.(bool); !valid || !ok {
-			return nil, fmt.Errorf("NewAPI token usage response is not successful")
-		}
+	code, present := p["code"]
+	if !present {
+		return nil, fmt.Errorf("NewAPI token usage response missing code")
+	}
+	if ok, valid := code.(bool); !valid || !ok {
+		return nil, fmt.Errorf("NewAPI token usage response is not successful")
 	}
 	d, ok := p["data"].(map[string]any)
 	if !ok {
@@ -341,6 +361,9 @@ func (s *UpstreamBillingProbeService) saveBalance(ctx context.Context, a *Accoun
 }
 
 func parseSub2APIUsageResponse(body []byte) (map[string]any, error) {
+	if err := rejectDuplicateJSONFields(body); err != nil {
+		return nil, err
+	}
 	var p map[string]any
 	if err := json.Unmarshal(body, &p); err != nil {
 		return nil, err
@@ -400,6 +423,9 @@ func parseNewAPITokenUsageResponse(body []byte, quota float64) (map[string]any, 
 	return parseNewAPITokenUsageResponseRaw(body, quota)
 }
 func parseNewAPIQuotaPerUnitResponse(body []byte) (float64, error) {
+	if err := rejectDuplicateJSONFields(body); err != nil {
+		return 0, err
+	}
 	var p map[string]any
 	if json.Unmarshal(body, &p) != nil {
 		return 0, fmt.Errorf("status")

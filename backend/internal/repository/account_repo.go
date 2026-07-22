@@ -397,16 +397,27 @@ func (r *accountRepository) ListCRSAccountIDs(ctx context.Context) (map[string]i
 }
 
 func (r *accountRepository) Update(ctx context.Context, account *service.Account) error {
-	return r.updateAccount(ctx, account, nil)
+	return r.updateAccount(ctx, account, nil, nil)
 }
 
-// UpdateWithUpstreamBillingProbeEnabled applies an explicit probe switch in the
-// same row-lock transaction as the rest of an admin account edit.
+// UpdateWithUpstreamBillingProbeEnabled applies an explicit billing probe switch
+// in the same row-lock transaction as the rest of an admin account edit.
 func (r *accountRepository) UpdateWithUpstreamBillingProbeEnabled(ctx context.Context, account *service.Account, enabled bool) error {
-	return r.updateAccount(ctx, account, &enabled)
+	return r.updateAccount(ctx, account, &enabled, nil)
 }
 
-func (r *accountRepository) updateAccount(ctx context.Context, account *service.Account, explicitProbeEnabled *bool) error {
+// UpdateWithUpstreamBalanceProbeEnabled applies an explicit balance probe switch
+// in the same row-lock transaction as the rest of an admin account edit.
+func (r *accountRepository) UpdateWithUpstreamBalanceProbeEnabled(ctx context.Context, account *service.Account, enabled bool) error {
+	return r.updateAccount(ctx, account, nil, &enabled)
+}
+
+// UpdateWithUpstreamProbesEnabled applies both explicit probe switches atomically.
+func (r *accountRepository) UpdateWithUpstreamProbesEnabled(ctx context.Context, account *service.Account, billingEnabled, balanceEnabled *bool) error {
+	return r.updateAccount(ctx, account, billingEnabled, balanceEnabled)
+}
+
+func (r *accountRepository) updateAccount(ctx context.Context, account *service.Account, explicitProbeEnabled, explicitBalanceEnabled *bool) error {
 	if account == nil {
 		return nil
 	}
@@ -430,7 +441,7 @@ func (r *accountRepository) updateAccount(ctx context.Context, account *service.
 		}
 	}
 
-	updated, err := r.updateLockedAccount(ctx, client, account, explicitProbeEnabled)
+	updated, err := r.updateLockedAccount(ctx, client, account, explicitProbeEnabled, explicitBalanceEnabled)
 	if err != nil {
 		return translatePersistenceError(err, service.ErrAccountNotFound, nil)
 	}
@@ -452,8 +463,8 @@ func (r *accountRepository) updateAccount(ctx context.Context, account *service.
 	return nil
 }
 
-func (r *accountRepository) updateLockedAccount(ctx context.Context, client *dbent.Client, account *service.Account, explicitProbeEnabled *bool) (*dbent.Account, error) {
-	extra, err := lockAndMergeAccountProbeExtra(ctx, client, account, explicitProbeEnabled)
+func (r *accountRepository) updateLockedAccount(ctx context.Context, client *dbent.Client, account *service.Account, explicitProbeEnabled, explicitBalanceEnabled *bool) (*dbent.Account, error) {
+	extra, err := lockAndMergeAccountProbeExtra(ctx, client, account, explicitProbeEnabled, explicitBalanceEnabled)
 	if err != nil {
 		return nil, err
 	}
@@ -542,7 +553,11 @@ func (r *accountRepository) updateLockedAccount(ctx context.Context, client *dbe
 	return builder.Save(ctx)
 }
 
-func lockAndMergeAccountProbeExtra(ctx context.Context, client *dbent.Client, account *service.Account, explicitProbeEnabled *bool) (map[string]any, error) {
+func lockAndMergeAccountProbeExtra(ctx context.Context, client *dbent.Client, account *service.Account, explicitProbeEnabled *bool, balanceEnabled ...*bool) (map[string]any, error) {
+	var explicitBalanceEnabled *bool
+	if len(balanceEnabled) > 0 {
+		explicitBalanceEnabled = balanceEnabled[0]
+	}
 	credentials, err := json.Marshal(normalizeJSONMap(account.Credentials))
 	if err != nil {
 		return nil, err
@@ -558,7 +573,9 @@ func lockAndMergeAccountProbeExtra(ctx context.Context, client *dbent.Client, ac
 			AND credentials = $4::jsonb
 			AND proxy_id IS NOT DISTINCT FROM $5,
 			extra -> 'upstream_billing_probe_enabled',
-			extra -> 'upstream_billing_probe'
+			extra -> 'upstream_billing_probe',
+			extra -> 'upstream_balance_probe_enabled',
+			extra -> 'upstream_balance_probe'
 		FROM accounts
 		WHERE id = $1 AND deleted_at IS NULL
 		FOR NO KEY UPDATE
@@ -575,11 +592,13 @@ func lockAndMergeAccountProbeExtra(ctx context.Context, client *dbent.Client, ac
 	}
 
 	var (
-		identityUnchanged bool
-		currentEnabled    []byte
-		currentSnapshot   []byte
+		identityUnchanged      bool
+		currentEnabled         []byte
+		currentSnapshot        []byte
+		currentBalanceEnabled  []byte
+		currentBalanceSnapshot []byte
 	)
-	if err := rows.Scan(&identityUnchanged, &currentEnabled, &currentSnapshot); err != nil {
+	if err := rows.Scan(&identityUnchanged, &currentEnabled, &currentSnapshot, &currentBalanceEnabled, &currentBalanceSnapshot); err != nil {
 		return nil, err
 	}
 	if err := rows.Err(); err != nil {
@@ -589,8 +608,11 @@ func lockAndMergeAccountProbeExtra(ctx context.Context, client *dbent.Client, ac
 	extra := copyJSONMap(normalizeJSONMap(account.Extra))
 	delete(extra, service.UpstreamBillingProbeEnabledExtraKey)
 	delete(extra, service.UpstreamBillingProbeExtraKey)
-	probeExplicitlyDisabled := false
+	delete(extra, service.UpstreamBalanceProbeEnabledExtraKey)
+	delete(extra, service.UpstreamBalanceProbeExtraKey)
 	probeAccount := account.Platform == service.PlatformOpenAI && account.Type == service.AccountTypeAPIKey
+	probeExplicitlyDisabled := false
+	balanceExplicitlyDisabled := false
 	if probeAccount && explicitProbeEnabled != nil {
 		extra[service.UpstreamBillingProbeEnabledExtraKey] = *explicitProbeEnabled
 		probeExplicitlyDisabled = !*explicitProbeEnabled
@@ -604,7 +626,27 @@ func lockAndMergeAccountProbeExtra(ctx context.Context, client *dbent.Client, ac
 			probeExplicitlyDisabled = true
 		}
 	}
-	if !identityUnchanged || probeExplicitlyDisabled || len(currentSnapshot) == 0 || string(currentSnapshot) == "null" {
+	if probeAccount && explicitBalanceEnabled != nil {
+		extra[service.UpstreamBalanceProbeEnabledExtraKey] = *explicitBalanceEnabled
+		balanceExplicitlyDisabled = !*explicitBalanceEnabled
+	} else if probeAccount && len(currentBalanceEnabled) > 0 && string(currentBalanceEnabled) != "null" {
+		var enabled any
+		if err := json.Unmarshal(currentBalanceEnabled, &enabled); err != nil {
+			return nil, err
+		}
+		extra[service.UpstreamBalanceProbeEnabledExtraKey] = enabled
+		if value, ok := enabled.(bool); ok && !value {
+			balanceExplicitlyDisabled = true
+		}
+	}
+	if !identityUnchanged || probeExplicitlyDisabled || balanceExplicitlyDisabled || len(currentSnapshot) == 0 || string(currentSnapshot) == "null" {
+		if identityUnchanged && !balanceExplicitlyDisabled && len(currentBalanceSnapshot) > 0 && string(currentBalanceSnapshot) != "null" {
+			var snapshot any
+			if err := json.Unmarshal(currentBalanceSnapshot, &snapshot); err != nil {
+				return nil, err
+			}
+			extra[service.UpstreamBalanceProbeExtraKey] = snapshot
+		}
 		return extra, nil
 	}
 	var snapshot any
@@ -612,6 +654,12 @@ func lockAndMergeAccountProbeExtra(ctx context.Context, client *dbent.Client, ac
 		return nil, err
 	}
 	extra[service.UpstreamBillingProbeExtraKey] = snapshot
+	if identityUnchanged && !balanceExplicitlyDisabled && len(currentBalanceSnapshot) > 0 && string(currentBalanceSnapshot) != "null" {
+		if err := json.Unmarshal(currentBalanceSnapshot, &snapshot); err != nil {
+			return nil, err
+		}
+		extra[service.UpstreamBalanceProbeExtraKey] = snapshot
+	}
 	return extra, nil
 }
 
@@ -1022,8 +1070,12 @@ func upstreamBillingRateSortExpression(extra string) string {
 }
 
 func upstreamBalanceSortExpression(extra string) string {
-	remaining := extra + " #> '{upstream_balance_probe,data,remaining}'"
-	return "CASE WHEN jsonb_typeof(" + remaining + ") = 'number' THEN (" + remaining + ")::numeric END"
+	remainingJSON := extra + " #> '{upstream_balance_probe,data,remaining}'"
+	remaining := extra + " #>> '{upstream_balance_probe,data,remaining}'"
+	rawRemainingJSON := extra + " #> '{upstream_balance_probe,data,raw_remaining}'"
+	rawRemaining := extra + " #>> '{upstream_balance_probe,data,raw_remaining}'"
+	unlimited := extra + " #>> '{upstream_balance_probe,data,unlimited}'"
+	return "CASE WHEN " + unlimited + " = 'true' THEN 1e308::numeric WHEN jsonb_typeof(" + remainingJSON + ") = 'number' THEN (" + remaining + ")::numeric WHEN jsonb_typeof(" + rawRemainingJSON + ") = 'number' THEN (" + rawRemaining + ")::numeric END"
 }
 
 func (r *accountRepository) ListByGroup(ctx context.Context, groupID int64) ([]service.Account, error) {
@@ -2803,11 +2855,16 @@ func (r *accountRepository) BulkUpdate(ctx context.Context, ids []int64, updates
 		args = append(args, *updates.Schedulable)
 		idx++
 	}
-	if updates.ProbeEnabled != nil {
+	if updates.ProbeEnabled != nil || updates.BalanceProbeEnabled != nil {
 		if updates.Extra == nil {
 			updates.Extra = make(map[string]any)
 		}
-		updates.Extra[service.UpstreamBillingProbeEnabledExtraKey] = *updates.ProbeEnabled
+		if updates.ProbeEnabled != nil {
+			updates.Extra[service.UpstreamBillingProbeEnabledExtraKey] = *updates.ProbeEnabled
+		}
+		if updates.BalanceProbeEnabled != nil {
+			updates.Extra[service.UpstreamBalanceProbeEnabledExtraKey] = *updates.BalanceProbeEnabled
+		}
 	}
 	// JSONB 需要合并而非覆盖，使用 raw SQL 保持旧行为。
 	if len(updates.Credentials) > 0 {
@@ -2845,7 +2902,7 @@ func (r *accountRepository) BulkUpdate(ctx context.Context, ids []int64, updates
 	whereClause := " WHERE id = ANY($" + itoa(idx) + ") AND deleted_at IS NULL"
 	args = append(args, pq.Array(ids))
 	idx++
-	if updates.ProbeEnabled != nil {
+	if updates.ProbeEnabled != nil || updates.BalanceProbeEnabled != nil {
 		whereClause += " AND platform = $" + itoa(idx) + " AND type = $" + itoa(idx+1)
 		args = append(args, service.PlatformOpenAI, service.AccountTypeAPIKey)
 	}
@@ -3471,7 +3528,7 @@ func (r *accountRepository) ListDueUpstreamBalanceProbeAccounts(ctx context.Cont
 	if r.sql == nil {
 		return nil, errors.New("account repository SQL executor not configured")
 	}
-	rows, err := r.sql.QueryContext(ctx, `SELECT id FROM accounts WHERE deleted_at IS NULL AND status = 'active' AND platform = 'openai' AND type = 'apikey' AND extra @> '{"upstream_balance_probe_enabled": true}'::jsonb AND (extra->'upstream_balance_probe'->>'next_probe_at' IS NULL OR (extra->'upstream_balance_probe'->>'next_probe_at')::timestamptz <= $1) ORDER BY id LIMIT $2`, now.UTC(), limit)
+	rows, err := r.sql.QueryContext(ctx, `SELECT id FROM accounts WHERE deleted_at IS NULL AND status = 'active' AND platform = 'openai' AND type = 'apikey' AND extra @> '{"upstream_balance_probe_enabled": true}'::jsonb AND (extra->'upstream_balance_probe'->>'next_probe_at' IS NULL OR extra->'upstream_balance_probe'->>'next_probe_at' !~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\.[0-9]+)?(Z|[+-][0-9]{2}:[0-9]{2})$' OR (extra->'upstream_balance_probe'->>'next_probe_at')::timestamptz <= $1) ORDER BY id LIMIT $2`, now.UTC(), limit)
 	if err != nil {
 		return nil, err
 	}

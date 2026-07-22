@@ -17,6 +17,40 @@ func (r *upstreamBillingProbeAdminRepo) ListShadowsByParent(context.Context, int
 	return nil, nil
 }
 
+func TestCreateAccountDefaultsBalanceProbeForOpenAIAPIKey(t *testing.T) {
+	repo := &upstreamBillingProbeAccountRepo{}
+	created, err := (&adminServiceImpl{accountRepo: repo}).CreateAccount(context.Background(), &CreateAccountInput{
+		Name: "upstream", Platform: PlatformOpenAI, Type: AccountTypeAPIKey,
+		Credentials: map[string]any{"api_key": "sk-test"}, SkipDefaultGroupBind: true,
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, true, created.Extra[UpstreamBalanceProbeEnabledExtraKey])
+}
+
+func TestUpdateAccountRejectsBalanceProbeForNonAPIKey(t *testing.T) {
+	accountID := int64(111)
+	repo := &upstreamBillingProbeAccountRepo{accounts: map[int64]*Account{
+		accountID: {ID: accountID, Platform: PlatformOpenAI, Type: AccountTypeOAuth, Status: StatusActive, Extra: map[string]any{}},
+	}}
+	enabled := true
+	_, err := (&adminServiceImpl{accountRepo: repo}).UpdateAccount(context.Background(), accountID, &UpdateAccountInput{BalanceProbeEnabled: &enabled})
+
+	require.ErrorIs(t, err, ErrUpstreamBillingProbeAccountInvalid)
+}
+
+func TestBulkUpdateAccountsRejectsMixedBalanceProbeTargets(t *testing.T) {
+	repo := &upstreamBillingProbeAccountRepo{accounts: map[int64]*Account{
+		1: {ID: 1, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Status: StatusActive, Extra: map[string]any{}},
+		2: {ID: 2, Platform: PlatformOpenAI, Type: AccountTypeOAuth, Status: StatusActive, Extra: map[string]any{}},
+	}}
+	enabled := true
+	_, err := (&adminServiceImpl{accountRepo: repo}).BulkUpdateAccounts(context.Background(), &BulkUpdateAccountsInput{AccountIDs: []int64{1, 2}, BalanceProbeEnabled: &enabled})
+
+	require.ErrorIs(t, err, ErrUpstreamBillingProbeAccountInvalid)
+	require.Empty(t, repo.bulkUpdates)
+}
+
 func TestCreateAccountDropsManagedUpstreamBillingProbeState(t *testing.T) {
 	repo := &upstreamBillingProbeAccountRepo{}
 	svc := &adminServiceImpl{accountRepo: repo}
