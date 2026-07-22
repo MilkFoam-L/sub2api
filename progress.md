@@ -1053,3 +1053,21 @@
 ### Notes
 - 修复不改变余额探测间隔、账号启用条件、API 合同或凭据处理，仅消除两条周期任务之间的串行等待和前端共享状态。
 - 回滚方式：对本次修复提交执行 `git revert <commit>`；无数据库迁移或配置回滚。
+
+## 2026-07-27 - Task: 发布最新余额修复腾讯云镜像
+
+### What was done
+- 基于已推送且全量验证通过的提交 `74bcb6d8`，使用生产根 Dockerfile 的等价 no-BuildKit 文件构建 `linux/amd64` release 镜像。
+- 推送腾讯云可追溯标签 `ccr.ccs.tencentyun.com/apophis-chat/sub2api:0.1.162-74bcb6d8-20260722152041`，随后更新 `latest`。
+- 发布前先记录旧 `latest` 摘要，并在隔离 PostgreSQL/Redis 环境完成自动初始化、迁移及健康检查。
+
+### Testing
+- 镜像版本输出：`Sub2API 0.1.162 (commit: 74bcb6d8, built: 2026-07-22T15:20:41Z)`。
+- 运行用户为 `uid=1000(sub2api)`；`psql`、`pg_dump` 均为 PostgreSQL `18.4`；`/app/resources`、可执行文件与 Docker healthcheck 均存在。
+- 隔离容器健康状态为 `healthy`，`/health` 返回 `{"status":"ok"}`；测试结束后仅清理本轮临时容器和网络。
+- 可追溯标签与新 `latest` 推送均返回摘要 `sha256:f73245417272a2a7f50c0e192447b32f746690d65ad31597fc72ca540528a905`；可追溯标签重新拉取核验为同一摘要。
+
+### Notes
+- 发布前 `latest` 回滚摘要为 `sha256:1e1bfccd35b9ed035d4ff0f0079fcc0eb8bcd7db481cae9965312d88d1a494d2`。
+- 本机仍使用 Docker legacy builder，构建上下文约 3.0GB；这些是后续构建效率优化项，不影响本次镜像完整性或运行正确性。
+- 回滚方式：部署端回切到发布前摘要；代码层正常 `git revert 74bcb6d8a` 和 `git revert 6eb9a817d`，禁止强推。
