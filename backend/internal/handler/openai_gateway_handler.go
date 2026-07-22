@@ -285,9 +285,6 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		return
 	}
 
-	setOpsRequestContext(c, reqModel, reqStream)
-	setOpsEndpointContext(c, "", int16(service.RequestTypeFromLegacy(reqStream, false)))
-
 	if userPrivacyFilterEnabled(apiKey) {
 		filteredBody, applyErr := applyUserPrivacyFilterBody(c.Request.Context(), reqLog, apiKey, service.ContentModerationProtocolOpenAIResponses, body, h.privacyFilterClient, gatewayPrivacyFilterFailClosed(h.cfg))
 		if applyErr != nil {
@@ -309,6 +306,15 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		}
 		sessionHashBody = body
 	}
+	if apiKey.Group != nil && apiKey.Group.Platform == service.PlatformOpenAI {
+		if cappedBody, changed := service.ApplyOpenAIReasoningEffortPolicy(body, apiKey.Group.MaxReasoningEffort, apiKey.Group.ReasoningEffortMappings); changed {
+			body = cappedBody
+			resetRequestBody(c, body)
+		}
+	}
+
+	setOpsRequestContext(c, reqModel, reqStream)
+	setOpsEndpointContext(c, "", int16(service.RequestTypeFromLegacy(reqStream, false)))
 
 	if decision := h.checkSecurityAudit(c, reqLog, apiKey, subject, service.ContentModerationProtocolOpenAIResponses, reqModel, body); decision != nil && !decision.AllowNextStage {
 		h.openAISecurityAuditError(c, decision)
@@ -434,7 +440,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 			if len(failedAccountIDs) == 0 {
 				if errors.Is(err, service.ErrNoAvailableCompactAccounts) {
 					markOpsRoutingCapacityLimitedIfNoAvailable(c, err)
-					h.handleStreamingAwareError(c, http.StatusServiceUnavailable, "compact_not_supported", "No available OpenAI accounts support /responses/compact", streamStarted)
+					h.handleStreamingAwareError(c, http.StatusServiceUnavailable, "compact_not_supported", "No available accounts support /responses/compact", streamStarted)
 					return
 				}
 				cls := classifyOpenAICompatibleNoAccountErrorFromGin(c, h.gatewayService, apiKey, reqModel, reqModel)
@@ -1509,7 +1515,6 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 		closeOpenAIClientWS(wsConn, coderws.StatusPolicyViolation, "invalid JSON payload")
 		return
 	}
-
 	if userPrivacyFilterEnabled(apiKey) {
 		filteredFirstMessage, applyErr := applyUserPrivacyFilterBody(ctx, reqLog, apiKey, service.ContentModerationProtocolOpenAIResponses, firstMessage, h.privacyFilterClient, gatewayPrivacyFilterFailClosed(h.cfg))
 		if applyErr != nil {
@@ -1517,6 +1522,11 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 			return
 		}
 		firstMessage = filteredFirstMessage
+	}
+	if apiKey.Group != nil && apiKey.Group.Platform == service.PlatformOpenAI {
+		if cappedFirstMessage, changed := service.ApplyOpenAIReasoningEffortPolicy(firstMessage, apiKey.Group.MaxReasoningEffort, apiKey.Group.ReasoningEffortMappings); changed {
+			firstMessage = cappedFirstMessage
+		}
 	}
 
 	reqModel := strings.TrimSpace(gjson.GetBytes(firstMessage, "model").String())
@@ -1779,9 +1789,17 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 			zap.Int("candidate_count", scheduleDecision.CandidateCount),
 		)
 
+		maxReasoningEffort := ""
+		var reasoningEffortMappings []service.ReasoningEffortMapping
+		if apiKey.Group != nil && apiKey.Group.Platform == service.PlatformOpenAI {
+			maxReasoningEffort = apiKey.Group.MaxReasoningEffort
+			reasoningEffortMappings = apiKey.Group.ReasoningEffortMappings
+		}
 		var requestPayloadHash string
 		hooks := &service.OpenAIWSIngressHooks{
-			InitialRequestModel: reqModel,
+			InitialRequestModel:     reqModel,
+			MaxReasoningEffort:      maxReasoningEffort,
+			ReasoningEffortMappings: reasoningEffortMappings,
 			BeforeRequest: func(turn int, payload []byte, originalModel string) ([]byte, error) {
 				if turn == 1 {
 					return nil, nil
@@ -1797,6 +1815,9 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 						return nil, service.NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, privacyFilterApplyErrorMessage(applyErr), applyErr.err)
 					}
 					checkedPayload = filteredPayload
+				}
+				if cappedPayload, changed := service.ApplyOpenAIReasoningEffortPolicy(checkedPayload, maxReasoningEffort, reasoningEffortMappings); changed {
+					checkedPayload = cappedPayload
 				}
 
 				model := strings.TrimSpace(originalModel)
