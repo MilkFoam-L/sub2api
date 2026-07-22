@@ -78,7 +78,9 @@ deploy/redis_data/
 # GitHub
 .github/
 
-# Claude files
+# Local tooling
+.cache/
+.narrafork/
 .claude/
 issues/
 CLAUDE.md
