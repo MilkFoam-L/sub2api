@@ -722,6 +722,18 @@ func (s *UpstreamBillingProbeService) doProbeRequest(
 	maxBodyBytes int64,
 	withAuthorization bool,
 ) (*http.Response, []byte, *upstreamBillingProbeRequestError) {
+	return s.doProbeRequestWithHeaders(ctx, account, tlsProfile, proxyURL, apiKey, method, requestURL, maxBodyBytes, withAuthorization, nil)
+}
+
+func (s *UpstreamBillingProbeService) doProbeRequestWithHeaders(
+	ctx context.Context,
+	account *Account,
+	tlsProfile *tlsfingerprint.Profile,
+	proxyURL, apiKey, method, requestURL string,
+	maxBodyBytes int64,
+	withAuthorization bool,
+	headers http.Header,
+) (*http.Response, []byte, *upstreamBillingProbeRequestError) {
 	probeCtx, cancel := context.WithTimeout(ctx, upstreamBillingProbeRequestTimeout)
 	defer cancel()
 	req, err := http.NewRequestWithContext(probeCtx, method, requestURL, bytes.NewReader(nil))
@@ -737,6 +749,12 @@ func (s *UpstreamBillingProbeService) doProbeRequest(
 	account.ApplyHeaderOverrides(req.Header)
 	if !withAuthorization {
 		req.Header.Del("Authorization")
+	}
+	for name, values := range headers {
+		req.Header.Del(name)
+		for _, value := range values {
+			req.Header.Add(name, value)
+		}
 	}
 	resp, err := s.accountTestService.httpUpstream.DoWithTLS(req, proxyURL, account.ID, account.Concurrency, tlsProfile)
 	if err != nil {

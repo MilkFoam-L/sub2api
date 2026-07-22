@@ -105,6 +105,48 @@ func TestUpdateAccount_ExplicitNewTokenOverwrites(t *testing.T) {
 	require.Equal(t, "sk-old", repo.account.Credentials["api_key"])
 }
 
+func TestBuildAccountForCreateNormalizesNewAPIUserID(t *testing.T) {
+	account, err := buildAccountForCreate(&CreateAccountInput{
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeAPIKey,
+		Credentials: map[string]any{
+			"api_key":        "model-key",
+			"newapi_user_id": " 123 ",
+		},
+	}, map[string]any{})
+
+	require.NoError(t, err)
+	require.Equal(t, "123", account.Credentials["newapi_user_id"])
+
+	_, err = buildAccountForCreate(&CreateAccountInput{
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Credentials: map[string]any{"newapi_user_id": "0"},
+	}, map[string]any{})
+	require.Error(t, err)
+}
+
+func TestUpdateAccountNormalizesAndValidatesNewAPIUserID(t *testing.T) {
+	accountID := int64(206)
+	repo := &updateAccountCredsRepoStub{account: &Account{
+		ID: accountID, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Status: StatusActive,
+		Credentials: map[string]any{"api_key": "model-key", "newapi_access_token": "dashboard-existing"},
+	}}
+	svc := &adminServiceImpl{accountRepo: repo}
+
+	updated, err := svc.UpdateAccount(context.Background(), accountID, &UpdateAccountInput{Credentials: map[string]any{
+		"newapi_access_token": "",
+		"newapi_user_id":      " 456 ",
+	}})
+
+	require.NoError(t, err)
+	require.Equal(t, "456", updated.Credentials["newapi_user_id"])
+	require.Equal(t, "dashboard-existing", updated.Credentials["newapi_access_token"])
+
+	_, err = svc.UpdateAccount(context.Background(), accountID, &UpdateAccountInput{Credentials: map[string]any{"newapi_user_id": "-1"}})
+	require.Error(t, err)
+}
+
 func TestUpdateAccount_EmptyCredentialsSkipsUpdate(t *testing.T) {
 	accountID := int64(204)
 	repo := &updateAccountCredsRepoStub{

@@ -78,6 +78,47 @@
           <p class="input-hint">{{ t('admin.accounts.leaveEmptyToKeep') }}</p>
         </div>
 
+        <div
+          v-if="account.platform === 'openai'"
+          class="space-y-3 rounded-lg border border-gray-200 bg-gray-50 p-4 dark:border-dark-600 dark:bg-dark-700/50"
+        >
+          <div>
+            <label class="input-label">{{ t('admin.accounts.newapiUserBalance.title') }}</label>
+            <p class="input-hint">{{ t('admin.accounts.newapiUserBalance.description') }}</p>
+          </div>
+          <div>
+            <label class="input-label">{{ t('admin.accounts.newapiUserBalance.accessToken') }}</label>
+            <input
+              v-model="editNewapiAccessToken"
+              type="password"
+              class="input font-mono"
+              autocomplete="new-password"
+              data-testid="newapi-access-token-input"
+              :placeholder="t('admin.accounts.newapiUserBalance.accessTokenPlaceholder')"
+            />
+            <p class="input-hint">{{ t('admin.accounts.newapiUserBalance.accessTokenHint') }}</p>
+            <p
+              v-if="hasExistingNewapiAccessToken"
+              class="mt-1 text-xs text-emerald-600 dark:text-emerald-400"
+              data-testid="newapi-access-token-configured"
+            >
+              {{ t('admin.accounts.newapiUserBalance.accessTokenConfigured') }}
+            </p>
+          </div>
+          <div>
+            <label class="input-label">{{ t('admin.accounts.newapiUserBalance.userId') }}</label>
+            <input
+              v-model="editNewapiUserId"
+              type="text"
+              inputmode="numeric"
+              class="input font-mono"
+              data-testid="newapi-user-id-input"
+              :placeholder="t('admin.accounts.newapiUserBalance.userIdPlaceholder')"
+            />
+            <p class="input-hint">{{ t('admin.accounts.newapiUserBalance.userIdHint') }}</p>
+          </div>
+        </div>
+
         <!-- Model Restriction Section (不适用于 Antigravity) -->
         <div v-if="account.platform !== 'antigravity'" class="border-t border-gray-200 pt-4 dark:border-dark-600">
           <label class="input-label">{{ t('admin.accounts.modelRestriction') }}</label>
@@ -2715,6 +2756,13 @@ interface TempUnschedRuleForm {
 const submitting = ref(false)
 const editBaseUrl = ref('https://api.anthropic.com')
 const editApiKey = ref('')
+const editNewapiAccessToken = ref('')
+const editNewapiUserId = ref('')
+const hasExistingNewapiAccessToken = computed(() =>
+  props.account?.platform === 'openai' &&
+  props.account?.type === 'apikey' &&
+  props.account.credentials_status?.has_newapi_access_token === true
+)
 // Bedrock credentials
 const editBedrockAccessKeyId = ref('')
 const editBedrockSecretAccessKey = ref('')
@@ -3256,6 +3304,13 @@ const syncFormFromAccount = (newAccount: Account | null) => {
 
   // Load intercept warmup requests setting (applies to all account types)
   const credentials = newAccount.credentials as Record<string, unknown> | undefined
+  editNewapiAccessToken.value = ''
+  editNewapiUserId.value =
+    newAccount.platform === 'openai' &&
+    newAccount.type === 'apikey' &&
+    typeof credentials?.newapi_user_id === 'string'
+      ? credentials.newapi_user_id.trim()
+      : ''
   interceptWarmupRequests.value = credentials?.intercept_warmup_requests === true
   autoPauseOnExpired.value = newAccount.auto_pause_on_expired === true
   editVertexProjectId.value = ''
@@ -4082,6 +4137,18 @@ const handleSubmit = async () => {
       } else if (!hasExistingApiKey) {
         appStore.showError(t('admin.accounts.apiKeyIsRequired'))
         return
+      }
+
+      if (props.account.platform === 'openai') {
+        delete newCredentials.newapi_access_token
+        if (editNewapiAccessToken.value.trim()) {
+          newCredentials.newapi_access_token = editNewapiAccessToken.value.trim()
+        }
+        if (editNewapiUserId.value.trim()) {
+          newCredentials.newapi_user_id = editNewapiUserId.value.trim()
+        } else {
+          delete newCredentials.newapi_user_id
+        }
       }
 
       // Add model mapping if configured（OpenAI 开启自动透传时保留现有映射，不再编辑）

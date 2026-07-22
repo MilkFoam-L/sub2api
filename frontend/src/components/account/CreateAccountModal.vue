@@ -1145,6 +1145,40 @@
 
         <div
           v-if="form.platform === 'openai'"
+          class="space-y-3 rounded-lg border border-gray-200 bg-gray-50 p-4 dark:border-dark-600 dark:bg-dark-700/50"
+        >
+          <div>
+            <label class="input-label">{{ t('admin.accounts.newapiUserBalance.title') }}</label>
+            <p class="input-hint">{{ t('admin.accounts.newapiUserBalance.description') }}</p>
+          </div>
+          <div>
+            <label class="input-label">{{ t('admin.accounts.newapiUserBalance.accessToken') }}</label>
+            <input
+              v-model="newapiAccessToken"
+              type="password"
+              class="input font-mono"
+              autocomplete="new-password"
+              data-testid="newapi-access-token-input"
+              :placeholder="t('admin.accounts.newapiUserBalance.accessTokenPlaceholder')"
+            />
+            <p class="input-hint">{{ t('admin.accounts.newapiUserBalance.accessTokenHint') }}</p>
+          </div>
+          <div>
+            <label class="input-label">{{ t('admin.accounts.newapiUserBalance.userId') }}</label>
+            <input
+              v-model="newapiUserId"
+              type="text"
+              inputmode="numeric"
+              class="input font-mono"
+              data-testid="newapi-user-id-input"
+              :placeholder="t('admin.accounts.newapiUserBalance.userIdPlaceholder')"
+            />
+            <p class="input-hint">{{ t('admin.accounts.newapiUserBalance.userIdHint') }}</p>
+          </div>
+        </div>
+
+        <div
+          v-if="form.platform === 'openai'"
           class="flex items-center justify-between gap-4 border-t border-gray-200 pt-4 dark:border-dark-600"
         >
           <div>
@@ -3703,6 +3737,8 @@ const accountCategory = ref<'oauth-based' | 'apikey' | 'bedrock' | 'service_acco
 const addMethod = ref<AddMethod>('oauth') // For oauth-based: 'oauth' or 'setup-token'
 const apiKeyBaseUrl = ref('https://api.anthropic.com')
 const apiKeyValue = ref('')
+const newapiAccessToken = ref('')
+const newapiUserId = ref('')
 const upstreamBillingAutoProbeEnabled = ref(true)
 const upstreamBalanceAutoProbeEnabled = ref(true)
 
@@ -4199,6 +4235,10 @@ watch(
           : newPlatform === 'grok'
             ? 'https://api.x.ai/v1'
             : 'https://api.anthropic.com'
+    if (newPlatform !== 'openai') {
+      newapiAccessToken.value = ''
+      newapiUserId.value = ''
+    }
     // Clear model-related settings
     allowedModels.value = []
     modelMappings.value = []
@@ -4641,6 +4681,8 @@ const resetForm = () => {
   addMethod.value = 'oauth'
   apiKeyBaseUrl.value = 'https://api.anthropic.com'
   apiKeyValue.value = ''
+  newapiAccessToken.value = ''
+  newapiUserId.value = ''
   upstreamBillingAutoProbeEnabled.value = true
   upstreamBalanceAutoProbeEnabled.value = true
   editQuotaLimit.value = null
@@ -5085,6 +5127,10 @@ const handleSubmit = async () => {
   }
   if (form.platform === 'gemini') {
     credentials.tier_id = geminiTierAIStudio.value
+  }
+  if (form.platform === 'openai') {
+    if (newapiAccessToken.value.trim()) credentials.newapi_access_token = newapiAccessToken.value.trim()
+    if (newapiUserId.value.trim()) credentials.newapi_user_id = newapiUserId.value.trim()
   }
 
   // Add model mapping if configured（OpenAI 开启自动透传时不应用）

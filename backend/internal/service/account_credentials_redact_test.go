@@ -29,6 +29,16 @@ func TestMergePreservingSensitiveCreds_PreservesSensitiveWhenIncomingMissing(t *
 	require.Equal(t, map[string]any{"foo": "bar"}, out["model_mapping"])
 }
 
+func TestMergePreservingSensitiveCreds_PreservesBlankNewAPIAccessToken(t *testing.T) {
+	existing := map[string]any{"newapi_access_token": "dashboard-existing", "newapi_user_id": "123"}
+	incoming := map[string]any{"newapi_access_token": "", "newapi_user_id": "456"}
+
+	out := MergePreservingSensitiveCreds(existing, incoming)
+
+	require.Equal(t, "dashboard-existing", out["newapi_access_token"])
+	require.Equal(t, "456", out["newapi_user_id"])
+}
+
 func TestMergePreservingSensitiveCreds_OverwritesWhenIncomingProvidesSensitive(t *testing.T) {
 	existing := map[string]any{
 		"refresh_token": "rt-old",
@@ -78,6 +88,24 @@ func TestMergePreservingSensitiveCreds_NonSensitiveDeletionAllowed(t *testing.T)
 	require.Equal(t, "rt", out["refresh_token"], "敏感键保留")
 	require.Equal(t, "https://new", out["base_url"])
 	require.NotContains(t, out, "project_id", "非敏感键 incoming 不传 = 删除")
+}
+
+func TestNewAPICredentialsAreClassifiedAndNormalized(t *testing.T) {
+	require.True(t, IsSensitiveCredentialKey("newapi_access_token"))
+	require.False(t, IsSensitiveCredentialKey("newapi_user_id"))
+
+	credentials := map[string]any{"newapi_user_id": " 00123 "}
+	require.NoError(t, NormalizeNewAPICredentials(credentials))
+	require.Equal(t, "00123", credentials["newapi_user_id"])
+	for _, value := range []any{"", "  "} {
+		credentials["newapi_user_id"] = value
+		require.NoError(t, NormalizeNewAPICredentials(credentials), "value=%v", value)
+		require.Equal(t, "", credentials["newapi_user_id"])
+	}
+	for _, value := range []any{"0", "-1", "1.2", "abc", 123} {
+		credentials["newapi_user_id"] = value
+		require.Error(t, NormalizeNewAPICredentials(credentials), "value=%v", value)
+	}
 }
 
 func TestIsSensitiveCredentialKey(t *testing.T) {

@@ -939,7 +939,7 @@ export interface UpstreamBillingProbeResult {
 }
 
 export interface UpstreamBalanceData {
-  source?: 'sub2api' | 'newapi' | string
+  source?: 'sub2api' | 'newapi' | 'newapi_user' | string
   currency?: string
   raw_unit?: string
   mode?: string

@@ -1,12 +1,20 @@
 package service
 
+import (
+	"net/http"
+	"strconv"
+	"strings"
+
+	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
+)
+
 // SensitiveCredentialKeys 列出 Account.Credentials JSON map 中绝不允许返回到前端的子键。
 // dto 层做响应脱敏、service 层做更新合并都引用此清单——新增凭证类型时务必同步。
 var SensitiveCredentialKeys = []string{
 	// OAuth
 	"access_token", "refresh_token", "id_token", "agent_private_key",
 	// API Key 类
-	"api_key", "session_key", "cookie",
+	"api_key", "session_key", "cookie", "newapi_access_token",
 	// 云服务凭据
 	"aws_secret_access_key", "aws_session_token",
 	"service_account_json", "service_account", "private_key",
@@ -36,15 +44,55 @@ func IsSensitiveCredentialKey(key string) bool {
 func MergePreservingSensitiveCreds(existing, incoming map[string]any) map[string]any {
 	out := make(map[string]any, len(incoming)+len(SensitiveCredentialKeys))
 	for k, v := range incoming {
+		if k == "newapi_access_token" {
+			if value, ok := v.(string); ok && strings.TrimSpace(value) == "" {
+				continue
+			}
+		}
 		out[k] = v
 	}
 	for _, key := range SensitiveCredentialKeys {
-		if _, hasIncoming := incoming[key]; hasIncoming {
-			continue
+		if incomingValue, hasIncoming := incoming[key]; hasIncoming {
+			if key != "newapi_access_token" {
+				continue
+			}
+			if value, ok := incomingValue.(string); !ok || strings.TrimSpace(value) != "" {
+				continue
+			}
 		}
 		if existingVal, ok := existing[key]; ok {
 			out[key] = existingVal
 		}
 	}
 	return out
+}
+
+// NormalizeNewAPICredentials validates and trims the optional NewAPI user ID.
+func NormalizeNewAPICredentials(credentials map[string]any) error {
+	if credentials == nil {
+		return nil
+	}
+	raw, exists := credentials["newapi_user_id"]
+	if !exists || raw == nil {
+		return nil
+	}
+	value, ok := raw.(string)
+	if !ok {
+		return infraerrors.New(http.StatusBadRequest, "INVALID_NEWAPI_USER_ID", "newapi_user_id must be a decimal positive integer")
+	}
+	value = strings.TrimSpace(value)
+	credentials["newapi_user_id"] = value
+	if value == "" {
+		return nil
+	}
+	for _, digit := range value {
+		if digit < '0' || digit > '9' {
+			return infraerrors.New(http.StatusBadRequest, "INVALID_NEWAPI_USER_ID", "newapi_user_id must be a decimal positive integer")
+		}
+	}
+	parsed, err := strconv.ParseUint(value, 10, 64)
+	if err != nil || parsed == 0 {
+		return infraerrors.New(http.StatusBadRequest, "INVALID_NEWAPI_USER_ID", "newapi_user_id must be a decimal positive integer")
+	}
+	return nil
 }

@@ -225,9 +225,6 @@ func (s *UpstreamBillingProbeService) probeLoadedBalanceAccount(ctx context.Cont
 		return fail("transport_unavailable", 0)
 	}
 	key := a.GetOpenAIApiKey()
-	if key == "" {
-		return fail("missing_api_key", 0)
-	}
 	base := a.GetOpenAIBaseURL()
 	if base == "" {
 		base = "https://api.openai.com"
@@ -246,6 +243,12 @@ func (s *UpstreamBillingProbeService) probeLoadedBalanceAccount(ctx context.Cont
 	var tlsProfile *tlsfingerprint.Profile
 	if s.accountTestService.tlsFPProfileService != nil {
 		tlsProfile = s.accountTestService.tlsFPProfileService.ResolveTLSProfile(a)
+	}
+	if accessToken := strings.TrimSpace(a.GetCredential("newapi_access_token")); accessToken != "" {
+		return s.probeNewAPIUserBalance(ctx, a, interval, now, base, proxyURL, accessToken, strings.TrimSpace(a.GetCredential("newapi_user_id")), tlsProfile, fail)
+	}
+	if key == "" {
+		return fail("missing_api_key", 0)
 	}
 	resp, body, e := s.doProbeRequest(ctx, a, tlsProfile, proxyURL, key, http.MethodGet, buildOpenAIEndpointURL(base, "/v1/usage"), upstreamBillingProbeMaxBodyBytes, true)
 	if e != nil {
@@ -277,7 +280,7 @@ func (s *UpstreamBillingProbeService) probeLoadedBalanceAccount(ctx context.Cont
 		return fail("newapi_invalid_response", tr.StatusCode)
 	}
 	if unlimited, _ := unlimitedData["unlimited"].(bool); unlimited {
-		return s.saveBalance(ctx, a, now, interval, unlimitedData, tr.StatusCode)
+		return fail("newapi_user_balance_unavailable", tr.StatusCode)
 	}
 	statusURL, urlErr := buildNewAPIControlEndpointURL(base, "/api/status")
 	if urlErr != nil {
@@ -297,6 +300,107 @@ func (s *UpstreamBillingProbeService) probeLoadedBalanceAccount(ctx context.Cont
 	}
 	return s.saveBalance(ctx, a, now, interval, data, tr.StatusCode)
 }
+func (s *UpstreamBillingProbeService) probeNewAPIUserBalance(
+	ctx context.Context,
+	a *Account,
+	interval int,
+	now time.Time,
+	base, proxyURL, accessToken, userID string,
+	tlsProfile *tlsfingerprint.Profile,
+	fail func(string, int) (*UpstreamBalanceProbeSnapshot, error),
+) (*UpstreamBalanceProbeSnapshot, error) {
+	selfURL, err := buildNewAPIControlEndpointURL(base, "/api/user/self")
+	if err != nil {
+		return fail("invalid_base_url", 0)
+	}
+	statusURL, err := buildNewAPIControlEndpointURL(base, "/api/status")
+	if err != nil {
+		return fail("invalid_base_url", 0)
+	}
+
+	type response struct {
+		resp *http.Response
+		body []byte
+		err  *upstreamBillingProbeRequestError
+	}
+	var selfResult, statusResult response
+	group, requestCtx := errgroup.WithContext(ctx)
+	group.Go(func() error {
+		headers := make(http.Header)
+		headers.Set("Authorization", "Bearer "+accessToken)
+		if userID != "" {
+			headers.Set("New-Api-User", userID)
+		}
+		selfResult.resp, selfResult.body, selfResult.err = s.doProbeRequestWithHeaders(requestCtx, a, tlsProfile, proxyURL, "", http.MethodGet, selfURL, upstreamBillingProbeMaxBodyBytes, false, headers)
+		return nil
+	})
+	group.Go(func() error {
+		statusResult.resp, statusResult.body, statusResult.err = s.doProbeRequest(requestCtx, a, tlsProfile, proxyURL, "", http.MethodGet, statusURL, upstreamBillingProbeMaxBodyBytes, false)
+		return nil
+	})
+	_ = group.Wait()
+
+	if selfResult.err != nil {
+		return fail("newapi_user_invalid_response", statusCodeOf(selfResult.resp))
+	}
+	if selfResult.resp.StatusCode == http.StatusUnauthorized || selfResult.resp.StatusCode == http.StatusForbidden {
+		return fail("newapi_user_auth_failed", selfResult.resp.StatusCode)
+	}
+	if selfResult.resp.StatusCode < 200 || selfResult.resp.StatusCode >= 300 {
+		return fail("newapi_user_invalid_response", selfResult.resp.StatusCode)
+	}
+	if statusResult.err != nil || statusResult.resp.StatusCode < 200 || statusResult.resp.StatusCode >= 300 {
+		return fail("newapi_user_quota_unit_unavailable", statusCodeOf(statusResult.resp))
+	}
+	quotaPerUnit, err := parseNewAPIQuotaPerUnitResponse(statusResult.body)
+	if err != nil {
+		return fail("newapi_user_quota_unit_unavailable", statusResult.resp.StatusCode)
+	}
+	data, err := parseNewAPIUserBalanceResponse(selfResult.body, quotaPerUnit)
+	if err != nil {
+		return fail("newapi_user_invalid_response", selfResult.resp.StatusCode)
+	}
+	return s.saveBalance(ctx, a, now, interval, data, selfResult.resp.StatusCode)
+}
+
+func parseNewAPIUserBalanceResponse(body []byte, quotaPerUnit float64) (map[string]any, error) {
+	if quotaPerUnit <= 0 || math.IsNaN(quotaPerUnit) || math.IsInf(quotaPerUnit, 0) {
+		return nil, fmt.Errorf("quota_per_unit")
+	}
+	if err := rejectDuplicateJSONFields(body); err != nil {
+		return nil, err
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(body, &payload); err != nil {
+		return nil, err
+	}
+	success, ok := payload["success"].(bool)
+	if !ok || !success {
+		return nil, fmt.Errorf("success")
+	}
+	data, ok := payload["data"].(map[string]any)
+	if !ok {
+		return nil, fmt.Errorf("data")
+	}
+	remaining, err := requiredFiniteBalanceNumberAllowNegative(data, "quota")
+	if err != nil {
+		return nil, err
+	}
+	used, err := requiredFiniteBalanceNumberAllowNegative(data, "used_quota")
+	if err != nil {
+		return nil, err
+	}
+	return map[string]any{
+		"source":         "newapi_user",
+		"mode":           "wallet",
+		"raw_remaining":  remaining,
+		"raw_used":       used,
+		"quota_per_unit": quotaPerUnit,
+		"remaining":      remaining / quotaPerUnit,
+		"used":           used / quotaPerUnit,
+	}, nil
+}
+
 func parseNewAPITokenUsageResponseRaw(body []byte, quota float64) (map[string]any, error) {
 	if err := rejectDuplicateJSONFields(body); err != nil {
 		return nil, err
@@ -325,7 +429,7 @@ func parseNewAPITokenUsageResponseRaw(body []byte, quota float64) (map[string]an
 	}
 	g, ge := requiredFiniteBalanceNumber(d, "total_granted")
 	used, ue := requiredFiniteBalanceNumber(d, "total_used")
-	av, ae := requiredFiniteBalanceNumber(d, "total_available")
+	av, ae := requiredFiniteBalanceNumberAllowNegative(d, "total_available")
 	if ge != nil || ue != nil || ae != nil {
 		return nil, fmt.Errorf("invalid quota")
 	}
@@ -430,16 +534,30 @@ func parseNewAPIQuotaPerUnitResponse(body []byte) (float64, error) {
 	if json.Unmarshal(body, &p) != nil {
 		return 0, fmt.Errorf("status")
 	}
+	if rawSuccess, present := p["success"]; present {
+		success, ok := rawSuccess.(bool)
+		if !ok || !success {
+			return 0, fmt.Errorf("status")
+		}
+	}
 	if d, ok := p["data"].(map[string]any); ok {
-		if v, e := finitePositiveBalanceNumber(d, "quota_per_unit"); e == nil {
-			return v, nil
+		if value, err := finitePositiveBalanceNumber(d, "quota_per_unit"); err == nil {
+			return value, nil
 		}
 	}
 	return finitePositiveBalanceNumber(p, "quota_per_unit")
 }
 func requiredFiniteBalanceNumber(m map[string]any, k string) (float64, error) {
+	v, err := requiredFiniteBalanceNumberAllowNegative(m, k)
+	if err != nil || v < 0 {
+		return 0, fmt.Errorf("%s", k)
+	}
+	return v, nil
+}
+
+func requiredFiniteBalanceNumberAllowNegative(m map[string]any, k string) (float64, error) {
 	v, ok := m[k].(float64)
-	if !ok || math.IsNaN(v) || math.IsInf(v, 0) || v < 0 {
+	if !ok || math.IsNaN(v) || math.IsInf(v, 0) {
 		return 0, fmt.Errorf("%s", k)
 	}
 	return v, nil

@@ -78,6 +78,24 @@ func TestParseNewAPITokenUsageResponseConvertsQuota(t *testing.T) {
 	require.Equal(t, false, data["unlimited"])
 }
 
+func TestParseNewAPITokenUsageResponseAllowsNegativeAvailable(t *testing.T) {
+	data, err := parseNewAPITokenUsageResponse([]byte(`{
+		"code":true,
+		"data":{
+			"object":"token_usage",
+			"total_granted":100,
+			"total_used":150,
+			"total_available":-50,
+			"unlimited_quota":false,
+			"expires_at":0
+		}
+	}`), 50)
+
+	require.NoError(t, err)
+	require.Equal(t, float64(-50), data["raw_remaining"])
+	require.Equal(t, float64(-1), data["remaining"])
+}
+
 func TestParseNewAPITokenUsageResponsePreservesUnlimitedQuota(t *testing.T) {
 	data, err := parseNewAPITokenUsageResponse([]byte(`{
 		"code":true,
@@ -162,7 +180,7 @@ func TestProbeBalanceFailsClosedWhenNewAPIStatusCannotConvertQuota(t *testing.T)
 	require.Nil(t, snap.Data)
 }
 
-func TestProbeBalanceAllowsNewAPIUnlimitedWithoutStatusConversion(t *testing.T) {
+func TestProbeBalanceRejectsNewAPIUnlimitedWithoutUserToken(t *testing.T) {
 	account := &Account{ID: 79, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Status: StatusActive, Credentials: map[string]any{"api_key": "sk-secret", "base_url": "https://upstream.example"}, Extra: map[string]any{UpstreamBalanceProbeEnabledExtraKey: true}}
 	repo := &upstreamBillingProbeAccountRepo{accounts: map[int64]*Account{79: account}}
 	upstream := &upstreamBillingProbeHTTPStub{responseForURL: func(req *http.Request) (*http.Response, error) {
@@ -178,8 +196,170 @@ func TestProbeBalanceAllowsNewAPIUnlimitedWithoutStatusConversion(t *testing.T) 
 	snap, err := svc.ProbeBalanceAccount(context.Background(), 79)
 
 	require.NoError(t, err)
-	require.Equal(t, UpstreamBillingProbeStatusOK, snap.Status)
-	require.Equal(t, true, snap.Data["unlimited"])
+	require.Equal(t, UpstreamBillingProbeStatusFailed, snap.Status)
+	require.Equal(t, "newapi_user_balance_unavailable", snap.LastError)
+	require.Nil(t, snap.Data)
+}
+
+func TestParseNewAPIUserBalanceResponseAllowsNegativeBalance(t *testing.T) {
+	data, err := parseNewAPIUserBalanceResponse([]byte(`{
+		"success":true,
+		"data":{"quota":-100,"used_quota":300}
+	}`), 50)
+
+	require.NoError(t, err)
+	require.Equal(t, "newapi_user", data["source"])
+	require.Equal(t, "wallet", data["mode"])
+	require.Equal(t, float64(-100), data["raw_remaining"])
+	require.Equal(t, float64(300), data["raw_used"])
+	require.Equal(t, float64(-2), data["remaining"])
+	require.Equal(t, float64(6), data["used"])
+	require.NotContains(t, data, "raw_limit")
+	require.NotContains(t, data, "limit")
+	require.NotContains(t, data, "currency")
+}
+
+func TestParseNewAPIUserBalanceResponseRejectsInvalidResponses(t *testing.T) {
+	for name, body := range map[string]string{
+		"success false":    `{"success":false,"data":{"quota":1,"used_quota":0}}`,
+		"missing quota":    `{"success":true,"data":{"used_quota":0}}`,
+		"wrong quota type": `{"success":true,"data":{"quota":"1","used_quota":0}}`,
+		"missing used":     `{"success":true,"data":{"quota":1}}`,
+		"duplicate quota":  `{"success":true,"data":{"quota":1,"quota":2,"used_quota":0}}`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, err := parseNewAPIUserBalanceResponse([]byte(body), 1)
+			require.Error(t, err)
+		})
+	}
+}
+
+func TestParseNewAPIStatusQuotaPerUnitRejectsExplicitFailureAndInvalidValues(t *testing.T) {
+	for _, body := range []string{
+		`{"success":false,"data":{"quota_per_unit":500000}}`,
+		`{"success":true,"data":{"quota_per_unit":0}}`,
+		`{"success":true,"data":{"quota_per_unit":"500000"}}`,
+	} {
+		_, err := parseNewAPIQuotaPerUnitResponse([]byte(body))
+		require.Error(t, err)
+	}
+}
+
+func TestParseNewAPIStatusQuotaPerUnitSupportsLegacyShapes(t *testing.T) {
+	for _, body := range []string{
+		`{"data":{"quota_per_unit":500000}}`,
+		`{"quota_per_unit":500000}`,
+	} {
+		quotaPerUnit, err := parseNewAPIQuotaPerUnitResponse([]byte(body))
+		require.NoError(t, err)
+		require.Equal(t, float64(500000), quotaPerUnit)
+	}
+}
+
+func TestProbeBalanceUsesNewAPIUserCredentialsWithOptionalUserHeader(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		userID     string
+		wantHeader string
+	}{
+		{name: "with user id", userID: "123", wantHeader: "123"},
+		{name: "without user id"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			credentials := map[string]any{"api_key": "model-key", "base_url": "https://upstream.example", "newapi_access_token": "dashboard-token"}
+			if tc.userID != "" {
+				credentials["newapi_user_id"] = tc.userID
+			}
+			account := &Account{ID: 80, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Status: StatusActive, Credentials: credentials, Extra: map[string]any{UpstreamBalanceProbeEnabledExtraKey: true}}
+			repo := &upstreamBillingProbeAccountRepo{accounts: map[int64]*Account{80: account}}
+			upstream := &upstreamBillingProbeHTTPStub{responseForURL: func(req *http.Request) (*http.Response, error) {
+				body := `{"success":true,"data":{"quota":-100,"used_quota":300}}`
+				if strings.HasSuffix(req.URL.Path, "/api/status") {
+					body = `{"success":true,"data":{"quota_per_unit":50}}`
+				}
+				return &http.Response{StatusCode: http.StatusOK, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(body))}, nil
+			}}
+			svc := newUpstreamBillingProbeTestService(repo, upstream, &upstreamBillingProbeSettingRepo{})
+
+			snap, err := svc.ProbeBalanceAccount(context.Background(), 80)
+
+			require.NoError(t, err)
+			require.Equal(t, UpstreamBillingProbeStatusOK, snap.Status)
+			require.Equal(t, "newapi_user", snap.Data["source"])
+			require.Equal(t, float64(-2), snap.Data["remaining"])
+			require.Len(t, upstream.requests, 2)
+			for _, req := range upstream.requests {
+				require.NotEqual(t, "/v1/usage", req.URL.Path)
+				require.NotEqual(t, "/api/usage/token/", req.URL.Path)
+				if strings.HasSuffix(req.URL.Path, "/api/user/self") {
+					require.Equal(t, "Bearer dashboard-token", req.Header.Get("Authorization"))
+					require.Equal(t, tc.wantHeader, req.Header.Get("New-Api-User"))
+				} else {
+					require.Empty(t, req.Header.Get("Authorization"))
+					require.Empty(t, req.Header.Get("New-Api-User"))
+				}
+			}
+		})
+	}
+}
+
+func TestProbeBalanceNewAPIUserFailuresDoNotFallback(t *testing.T) {
+	for _, status := range []int{http.StatusUnauthorized, http.StatusForbidden} {
+		t.Run(http.StatusText(status), func(t *testing.T) {
+			account := &Account{ID: 81, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Status: StatusActive, Credentials: map[string]any{"api_key": "model-key", "base_url": "https://upstream.example", "newapi_access_token": "dashboard-token"}, Extra: map[string]any{UpstreamBalanceProbeEnabledExtraKey: true}}
+			repo := &upstreamBillingProbeAccountRepo{accounts: map[int64]*Account{81: account}}
+			upstream := &upstreamBillingProbeHTTPStub{responseForURL: func(req *http.Request) (*http.Response, error) {
+				body := `{"success":true,"data":{"quota_per_unit":50}}`
+				responseStatus := http.StatusOK
+				if strings.HasSuffix(req.URL.Path, "/api/user/self") {
+					responseStatus = status
+					body = `{"message":"credential rejected"}`
+				}
+				return &http.Response{StatusCode: responseStatus, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(body))}, nil
+			}}
+			svc := newUpstreamBillingProbeTestService(repo, upstream, &upstreamBillingProbeSettingRepo{})
+
+			snap, err := svc.ProbeBalanceAccount(context.Background(), 81)
+
+			require.NoError(t, err)
+			require.Equal(t, UpstreamBillingProbeStatusFailed, snap.Status)
+			require.Equal(t, "newapi_user_auth_failed", snap.LastError)
+			require.NotContains(t, snap.LastError, "dashboard-token")
+			for _, req := range upstream.requests {
+				require.NotEqual(t, "/v1/usage", req.URL.Path)
+				require.NotEqual(t, "/api/usage/token/", req.URL.Path)
+			}
+		})
+	}
+}
+
+func TestProbeBalanceNewAPIUserClassifiesInvalidResponses(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		selfBody   string
+		statusBody string
+		wantError  string
+	}{
+		{name: "invalid self", selfBody: `{"success":true,"data":{"quota":"bad","used_quota":0}}`, statusBody: `{"success":true,"data":{"quota_per_unit":50}}`, wantError: "newapi_user_invalid_response"},
+		{name: "invalid status", selfBody: `{"success":true,"data":{"quota":1,"used_quota":0}}`, statusBody: `{"success":false,"data":{"quota_per_unit":50}}`, wantError: "newapi_user_quota_unit_unavailable"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			account := &Account{ID: 82, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Status: StatusActive, Credentials: map[string]any{"api_key": "model-key", "base_url": "https://upstream.example", "newapi_access_token": "dashboard-token"}, Extra: map[string]any{UpstreamBalanceProbeEnabledExtraKey: true}}
+			repo := &upstreamBillingProbeAccountRepo{accounts: map[int64]*Account{82: account}}
+			upstream := &upstreamBillingProbeHTTPStub{responseForURL: func(req *http.Request) (*http.Response, error) {
+				body := tc.selfBody
+				if strings.HasSuffix(req.URL.Path, "/api/status") {
+					body = tc.statusBody
+				}
+				return &http.Response{StatusCode: http.StatusOK, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(body))}, nil
+			}}
+			svc := newUpstreamBillingProbeTestService(repo, upstream, &upstreamBillingProbeSettingRepo{})
+			snap, err := svc.ProbeBalanceAccount(context.Background(), 82)
+			require.NoError(t, err)
+			require.Equal(t, tc.wantError, snap.LastError)
+			require.Nil(t, snap.Data)
+		})
+	}
 }
 
 func TestProbeBalanceFallsBackToNewAPIOnlyAfter404(t *testing.T) {
@@ -196,7 +376,7 @@ func TestProbeBalanceFallsBackToNewAPIOnlyAfter404(t *testing.T) {
 			body = `{"code":true,"data":{"object":"token_usage","total_granted":100,"total_used":25,"total_available":75,"unlimited_quota":false}}`
 		}
 		if strings.HasSuffix(req.URL.Path, "/api/status") {
-			body = `{"data":{"quota_per_unit":50}}`
+			body = `{"success":true,"data":{"quota_per_unit":50}}`
 		}
 		return &http.Response{StatusCode: status, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(body))}, nil
 	}}

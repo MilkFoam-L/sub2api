@@ -226,6 +226,17 @@ export default {
         batchCompleted: 'Probed {count} account(s)',
         batchPartial: 'Probe partially completed: {success} succeeded, {failed} failed'
       },
+      newapiUserBalance: {
+        title: 'NewAPI User Balance (Optional)',
+        description: 'Reads the real NewAPI user balance without affecting model requests.',
+        accessToken: 'Dashboard Access Token / PAT',
+        accessTokenPlaceholder: 'Enter the NewAPI Dashboard Access Token / PAT',
+        accessTokenHint: 'This is not the model API key. It is used only for /api/user/self. Leave blank when editing to keep the existing value.',
+        accessTokenConfigured: 'An access token is configured. Leave blank to keep it.',
+        userId: 'NewAPI User ID',
+        userIdPlaceholder: 'For example, 12345',
+        userIdHint: 'Some NewAPI versions require the numeric user ID.'
+      },
       upstreamBalance: {
         autoProbe: 'Automatically probe upstream balance',
         autoProbeHint: 'Probe this account balance on the global interval when balance detection is enabled.',
@@ -239,6 +250,7 @@ export default {
         source: 'Source: {value}',
         mode: 'Mode: {value}',
         usedLimit: 'Used: {used}; Limit: {limit}',
+        cumulativeUsed: 'Cumulative used: {used}',
         updatedAt: 'Updated: {value}',
         noEligibleAccounts: 'Select OpenAI API key accounts',
         batchLimit: 'A batch can probe at most 20 accounts',

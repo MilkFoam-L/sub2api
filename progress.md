@@ -1014,3 +1014,24 @@
 - `frontend/src/i18n/locales/zh/misc.ts`：移除自动合并后的同名重复键，保留与英文一致的正确层级。
 - `backend/cmd/server/VERSION`：从 `0.1.152` 更新为 `0.1.153`。
 - 回滚方式：使用 `git revert -m 1 <本次 v0.1.153 merge commit>` 回退合并；迁移 `174_add_usage_logs_api_key_latest_ip_index_notx.sql` 仅新增索引，部署前回滚不涉及数据库。
+
+## 2026-07-27 - Task: 接入 NewAPI 用户真实余额
+
+### What was done
+- 为 OpenAI API Key 账号新增可选的 NewAPI Dashboard Access Token/PAT 与数字用户 ID 配置；Access Token 纳入统一敏感凭据脱敏与编辑保留机制，不会通过账号 DTO 返回前端。
+- 余额探测配置 PAT 后并发请求同源 `/api/user/self` 与 `/api/status`，复用账号代理、TLS 指纹、超时、禁重定向和上游 URL 安全策略；认证、响应或换算失败时关闭失败，不回退模型 API Key 的 Token 额度。
+- 将 NewAPI `quota` 按 `quota_per_unit` 换算为真实余额，支持负余额；钱包 Tooltip 仅显示累计已用，不把累计消费与当前余额相加误称固定上限。
+- 管理端余额主值和 Tooltip 数值统一保留一位小数且不展示 USD、CNY、quota 等单位；无限 Token 不再显示为无限或负余额。
+
+### Testing
+- `GOCACHE="C:/Users/MilkFoam/AppData/Local/Temp/sub2api-go-cache" go test -p 1 ./...`：后端全量通过。
+- `pnpm test:run`：前端全量 199 个测试文件、1413 项测试通过。
+- NewAPI 余额、凭据脱敏/合并、创建/编辑表单、余额组件和 i18n 定向测试：通过。
+- `pnpm run build`：Vue/TypeScript 类型检查与 Vite 生产构建通过；仅保留既有 Browserslist、动态/静态 import 和大 chunk 警告。
+- 后端独立可执行文件已编译到系统临时目录；`git diff --check`、相关 ESLint 与独立安全审查通过。
+
+### Notes
+- `newapi_access_token` 只用于 `/api/user/self`；`/api/status` 不携带该凭据，响应体和错误快照不记录 token。
+- 编辑时留空会保留已有 PAT；当前 UI 不提供显式删除 PAT 入口，可通过替换 PAT 轮换凭据。
+- 未连接真实 NewAPI 多版本实例，协议兼容性由新旧 `/api/status` 结构和失败关闭测试覆盖；部署后仍建议用目标 NewAPI 实例做一次人工余额核对。
+- 回滚方式：对本次功能提交执行 `git revert <commit>`；无数据库迁移、生产配置或镜像变更。

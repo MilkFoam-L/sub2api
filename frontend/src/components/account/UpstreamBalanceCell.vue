@@ -11,11 +11,14 @@
       <div class="space-y-1">
         <p v-if="data?.source">{{ t('admin.accounts.upstreamBalance.source', { value: data.source }) }}</p>
         <p v-if="data?.mode">{{ t('admin.accounts.upstreamBalance.mode', { value: data.mode }) }}</p>
-        <p v-if="data && (data.used != null || data.limit != null)">
+        <p v-if="data?.mode === 'wallet' && (data.used != null || data.raw_used != null)">
+          {{ t('admin.accounts.upstreamBalance.cumulativeUsed', { used: formatNumber(data.used ?? data.raw_used) }) }}
+        </p>
+        <p v-else-if="data && (data.used != null || data.limit != null)">
           {{ t('admin.accounts.upstreamBalance.usedLimit', { used: formatNumber(data.used), limit: formatNumber(data.limit) }) }}
         </p>
         <p v-else-if="data && (data.raw_used != null || data.raw_limit != null)">
-          {{ t('admin.accounts.upstreamBalance.usedLimit', { used: formatNumber(data.raw_used), limit: formatNumber(data.raw_limit) }) }} {{ data.raw_unit ?? 'quota' }}
+          {{ t('admin.accounts.upstreamBalance.usedLimit', { used: formatNumber(data.raw_used), limit: formatNumber(data.raw_limit) }) }}
         </p>
         <p>{{ t('admin.accounts.upstreamBalance.updatedAt', { value: formatDate(snapshot?.received_at) }) }}</p>
       </div>
@@ -63,18 +66,18 @@ const statusLabel = computed(() => {
   if (snapshot.value.status === 'unsupported') return t('admin.accounts.upstreamBalance.unsupported')
   if (snapshot.value.status === 'failed') return t('admin.accounts.upstreamBalance.failed')
   if (stale.value) return t('admin.accounts.upstreamBalance.stale')
-  if (data.value?.unlimited === true) return t('admin.accounts.upstreamBalance.unlimited')
+  if (data.value?.unlimited === true) return t('admin.accounts.upstreamBalance.failed')
   return t('admin.accounts.upstreamBalance.notProbed')
 })
 const valueLabel = computed(() => {
   if (snapshot.value?.status !== 'ok' || stale.value || data.value?.unlimited === true) return ''
   const remaining = data.value?.remaining
   if (typeof remaining === 'number' && Number.isFinite(remaining)) {
-    return `${formatNumber(remaining)} ${data.value?.currency ?? 'USD'}`
+    return formatNumber(remaining)
   }
   const rawRemaining = data.value?.raw_remaining
   if (typeof rawRemaining === 'number' && Number.isFinite(rawRemaining)) {
-    return `${formatNumber(rawRemaining)} ${data.value?.raw_unit ?? 'quota'}`
+    return formatNumber(rawRemaining)
   }
   return ''
 })
@@ -85,6 +88,6 @@ const statusClass = computed(() => {
   if (stale.value) return 'text-amber-600 dark:text-amber-400'
   return 'text-gray-400 dark:text-gray-500'
 })
-const formatNumber = (value?: number) => typeof value === 'number' && Number.isFinite(value) ? Number(value.toPrecision(12)).toString() : '-'
+const formatNumber = (value?: number) => typeof value === 'number' && Number.isFinite(value) ? value.toFixed(1) : '-'
 const formatDate = (value?: string) => value ? new Date(value).toLocaleString(undefined, { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : '-'
 </script>

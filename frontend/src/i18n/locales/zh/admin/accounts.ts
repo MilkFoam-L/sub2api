@@ -176,6 +176,17 @@ export default {
         batchCompleted: '已完成 {count} 个账号的倍率探测',
         batchPartial: '倍率探测部分完成：成功 {success} 个，失败 {failed} 个'
       },
+      newapiUserBalance: {
+        title: 'NewAPI 用户余额（可选）',
+        description: '用于读取 NewAPI 用户真实余额，不影响模型请求。',
+        accessToken: 'Dashboard Access Token / PAT',
+        accessTokenPlaceholder: '请输入 NewAPI Dashboard Access Token / PAT',
+        accessTokenHint: '这不是模型 API Key，仅用于请求 /api/user/self。编辑时留空会保留已有值。',
+        accessTokenConfigured: '已配置 Access Token；留空将保留现有值。',
+        userId: 'NewAPI 用户 ID',
+        userIdPlaceholder: '例如 12345',
+        userIdHint: '部分 NewAPI 版本要求提供数字用户 ID。'
+      },
       upstreamBalance: {
         autoProbe: '自动探测上游余额',
         autoProbeHint: '启用后按全局余额探测周期查询此账号；全局余额探测关闭时不会执行。',
@@ -189,6 +200,7 @@ export default {
         source: '来源：{value}',
         mode: '模式：{value}',
         usedLimit: '已用：{used}；上限：{limit}',
+        cumulativeUsed: '累计已用：{used}',
         updatedAt: '更新时间：{value}',
         noEligibleAccounts: '请选择 OpenAI API Key 账号',
         batchLimit: '每次最多探测 20 个账号',

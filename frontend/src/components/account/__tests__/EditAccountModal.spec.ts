@@ -1018,4 +1018,52 @@ describe('EditAccountModal', () => {
       'antigravity_project_id'
     )
   })
+
+  it('rehydrates NewAPI user ID and preserves a configured access token when left blank', async () => {
+    const account = buildAccount()
+    account.credentials = {
+      base_url: 'https://api.openai.com',
+      newapi_user_id: '12345'
+    }
+    account.credentials_status = { has_api_key: true, has_newapi_access_token: true }
+    updateAccountMock.mockReset().mockResolvedValue(account)
+    checkMixedChannelRiskMock.mockReset().mockResolvedValue({ has_risk: false })
+
+    const wrapper = mountModal(account)
+    expect(wrapper.get<HTMLInputElement>('[data-testid="newapi-user-id-input"]').element.value).toBe('12345')
+    expect(wrapper.get('[data-testid="newapi-access-token-configured"]').text()).toContain(
+      'admin.accounts.newapiUserBalance.accessTokenConfigured'
+    )
+
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    expect(updateAccountMock).toHaveBeenCalledTimes(1)
+    expect(updateAccountMock.mock.calls[0]?.[1]?.credentials).not.toHaveProperty('newapi_access_token')
+    expect(updateAccountMock.mock.calls[0]?.[1]?.credentials?.newapi_user_id).toBe('12345')
+  })
+
+  it('trims and replaces NewAPI user balance credentials when provided', async () => {
+    const account = buildAccount()
+    account.credentials_status = { has_api_key: true }
+    updateAccountMock.mockReset().mockResolvedValue(account)
+    checkMixedChannelRiskMock.mockReset().mockResolvedValue({ has_risk: false })
+    const wrapper = mountModal(account)
+
+    await wrapper.get('[data-testid="newapi-access-token-input"]').setValue(' replacement-pat ')
+    await wrapper.get('[data-testid="newapi-user-id-input"]').setValue(' 67890 ')
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    expect(updateAccountMock.mock.calls[0]?.[1]?.credentials).toMatchObject({
+      newapi_access_token: 'replacement-pat',
+      newapi_user_id: '67890'
+    })
+  })
+
+  it('does not expose NewAPI user balance fields for non-OpenAI API key accounts', () => {
+    const account = buildGrokAPIKeyAccount()
+    const wrapper = mountModal(account)
+
+    expect(wrapper.find('[data-testid="newapi-access-token-input"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="newapi-user-id-input"]').exists()).toBe(false)
+  })
 })

@@ -292,4 +292,29 @@ describe('CreateAccountModal OpenAI long-context billing', () => {
 
     expect(createOpenAICodexPATMock.mock.calls[0]?.[0]?.extra?.openai_long_context_billing_enabled).toBe(false)
   })
+
+  it('submits optional NewAPI user balance credentials for OpenAI API key accounts', async () => {
+    const wrapper = mountModal()
+    await selectButtonByText(wrapper, 'OpenAI')
+    await selectButtonByText(wrapper, 'API Key')
+    await wrapper.get('form#create-account-form input[type="text"]').setValue('OpenAI account')
+    await wrapper.get('form#create-account-form input[type="password"]').setValue('test-api-key')
+    await wrapper.get('[data-testid="newapi-access-token-input"]').setValue(' dashboard-pat ')
+    await wrapper.get('[data-testid="newapi-user-id-input"]').setValue(' 12345 ')
+    await wrapper.get('form#create-account-form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(createAccountMock.mock.calls[0]?.[0]?.credentials).toMatchObject({
+      newapi_access_token: 'dashboard-pat',
+      newapi_user_id: '12345'
+    })
+  })
+
+  it('does not expose NewAPI user balance fields for non-OpenAI accounts', async () => {
+    const wrapper = mountModal()
+    await selectButtonByText(wrapper, 'admin.accounts.claudeConsole')
+
+    expect(wrapper.find('[data-testid="newapi-access-token-input"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="newapi-user-id-input"]').exists()).toBe(false)
+  })
 })
