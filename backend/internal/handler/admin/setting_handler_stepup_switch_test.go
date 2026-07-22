@@ -155,15 +155,15 @@ func TestUpdateSettingsOmittedSecuritySwitchesKeepStoredValues(t *testing.T) {
 	require.Equal(t, "true", repo.values[service.SettingKeySessionBindingEnabled])
 }
 
-// 省略字段且存储键缺失时采用本地安全默认开启，并在全量保存时保持开启。
-func TestUpdateSettingsOmittedSecuritySwitchesDefaultEnabled(t *testing.T) {
+// 省略字段且存储键缺失时，可选安全开关保持关闭，避免升级后自动锁定现有部署。
+func TestUpdateSettingsOmittedSecuritySwitchesUseCompatibleDefaults(t *testing.T) {
 	h, repo := newStepUpSwitchTestHandler(t, map[string]string{})
 
 	rec := doUpdateSettings(t, h, map[string]any{"registration_enabled": true}, nil)
 
 	require.Equal(t, http.StatusOK, rec.Code)
-	require.Equal(t, "true", repo.values[service.SettingKeyStepUpEnabled])
-	require.Equal(t, "true", repo.values[service.SettingKeySessionBindingEnabled])
+	require.Equal(t, "false", repo.values[service.SettingKeyStepUpEnabled])
+	require.Equal(t, "false", repo.values[service.SettingKeySessionBindingEnabled])
 }
 
 func TestUpdateSettingsForwardedClientIPHeadersOmittedPreservesAndEmptyClears(t *testing.T) {

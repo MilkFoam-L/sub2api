@@ -146,7 +146,8 @@ func (s *forwardedIPMigrationRepoStub) Delete(context.Context, string) error {
 }
 
 type settingAntigravityUARepoStub struct {
-	values map[string]string
+	values      map[string]string
+	getValueErr error
 }
 
 func (s *settingAntigravityUARepoStub) Get(ctx context.Context, key string) (*Setting, error) {
@@ -154,6 +155,9 @@ func (s *settingAntigravityUARepoStub) Get(ctx context.Context, key string) (*Se
 }
 
 func (s *settingAntigravityUARepoStub) GetValue(ctx context.Context, key string) (string, error) {
+	if s.getValueErr != nil {
+		return "", s.getValueErr
+	}
 	if value, ok := s.values[key]; ok {
 		return value, nil
 	}
@@ -576,14 +580,30 @@ func TestSettingService_UpdateSettings_RejectsInvalidOpenAIImagesResponsesReason
 	require.Nil(t, repo.updates)
 }
 
-func TestSettingService_InitializeDefaultSettingsPersistsConfiguredForwardedClientIPHeaders(t *testing.T) {
-	repo := &forwardedIPMigrationRepoStub{values: map[string]string{}}
-	cfg := &config.Config{}
-	cfg.SetForwardedClientIPSettings(true, []string{"X-Cdn-Ip", "True-Client-Ip"})
-	svc := NewSettingService(repo, cfg)
+func TestSettingService_InitializeDefaultSettingsPersistsConfiguredForwardedClientIPSettings(t *testing.T) {
+	tests := []struct {
+		name    string
+		enabled bool
+		headers []string
+	}{
+		{name: "secure defaults", enabled: false, headers: []string{}},
+		{name: "explicit compatibility opt in", enabled: true, headers: []string{"X-Cdn-Ip", "True-Client-Ip"}},
+	}
 
-	require.NoError(t, svc.InitializeDefaultSettings(context.Background()))
-	require.JSONEq(t, `["X-Cdn-Ip","True-Client-Ip"]`, repo.values[SettingKeyForwardedClientIPHeaders])
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			repo := &forwardedIPMigrationRepoStub{values: map[string]string{}}
+			cfg := &config.Config{}
+			cfg.SetForwardedClientIPSettings(test.enabled, test.headers)
+			svc := NewSettingService(repo, cfg)
+
+			require.NoError(t, svc.InitializeDefaultSettings(context.Background()))
+			require.Equal(t, strconv.FormatBool(test.enabled), repo.values[SettingKeyAPIKeyACLTrustForwardedIP])
+			expectedHeaders, err := json.Marshal(test.headers)
+			require.NoError(t, err)
+			require.JSONEq(t, string(expectedHeaders), repo.values[SettingKeyForwardedClientIPHeaders])
+		})
+	}
 }
 
 func TestSettingService_UpdateSettings_APIKeyACLTrustForwardedIPRefreshesConfig(t *testing.T) {
@@ -650,19 +670,52 @@ func TestSettingService_ParseSettings_APIKeyACLTrustForwardedIPFallsBackToConfig
 	require.True(t, got.APIKeyACLTrustForwardedIP)
 }
 
-func TestSettingService_ParseSettings_SecuritySwitchesDefaultOn(t *testing.T) {
+func TestSettingService_ParseSettings_SecuritySwitchesRequireExplicitOptIn(t *testing.T) {
 	svc := NewSettingService(&settingUpdateRepoStub{}, &config.Config{})
 
 	defaults := svc.parseSettings(map[string]string{})
-	require.True(t, defaults.SessionBindingEnabled)
-	require.True(t, defaults.StepUpEnabled)
+	require.False(t, defaults.SessionBindingEnabled)
+	require.False(t, defaults.StepUpEnabled)
 
-	explicitlyDisabled := svc.parseSettings(map[string]string{
-		SettingKeySessionBindingEnabled: "false",
-		SettingKeyStepUpEnabled:         "false",
+	explicitValues := svc.parseSettings(map[string]string{
+		SettingKeySessionBindingEnabled: "true",
+		SettingKeyStepUpEnabled:         "true",
 	})
-	require.False(t, explicitlyDisabled.SessionBindingEnabled)
-	require.False(t, explicitlyDisabled.StepUpEnabled)
+	require.True(t, explicitValues.SessionBindingEnabled)
+	require.True(t, explicitValues.StepUpEnabled)
+}
+
+func TestSettingService_SecuritySwitchesRequireExplicitTrue(t *testing.T) {
+	tests := []struct {
+		name   string
+		values map[string]string
+		want   bool
+	}{
+		{name: "missing settings", values: map[string]string{}, want: false},
+		{name: "explicitly disabled", values: map[string]string{
+			SettingKeySessionBindingEnabled: "false",
+			SettingKeyStepUpEnabled:         "false",
+		}, want: false},
+		{name: "explicitly enabled", values: map[string]string{
+			SettingKeySessionBindingEnabled: "true",
+			SettingKeyStepUpEnabled:         "true",
+		}, want: true},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			svc := NewSettingService(&settingAntigravityUARepoStub{values: test.values}, &config.Config{})
+			require.Equal(t, test.want, svc.IsSessionBindingEnabled(context.Background()))
+			require.Equal(t, test.want, svc.IsStepUpEnabled(context.Background()))
+		})
+	}
+}
+
+func TestSettingService_SecuritySwitchReadFailureKeepsOptionalFeaturesDisabled(t *testing.T) {
+	svc := NewSettingService(&settingAntigravityUARepoStub{getValueErr: errors.New("database unavailable")}, &config.Config{})
+
+	require.False(t, svc.IsSessionBindingEnabled(context.Background()))
+	require.False(t, svc.IsStepUpEnabled(context.Background()))
 }
 
 func TestSettingService_ParseSettings_APIKeyACLTrustForwardedIPUsesStoredValue(t *testing.T) {
@@ -713,17 +766,22 @@ func TestSettingService_LoadForwardedClientIPSettingsMigration(t *testing.T) {
 		wantMigrationMarkerSet bool
 	}{
 		{
-			name:                   "missing setting follows configured default",
+			name:                   "missing setting uses secure default",
+			values:                 map[string]string{},
+			wantEnabled:            false,
+			wantMigrationMarkerSet: true,
+		},
+		{
+			name:                   "missing setting honors explicit config opt in",
 			values:                 map[string]string{},
 			configDefault:          true,
 			wantEnabled:            true,
 			wantMigrationMarkerSet: true,
 		},
 		{
-			name:                   "legacy false without proxy config migrates to compatibility",
+			name:                   "legacy false without proxy config stays secure",
 			values:                 map[string]string{SettingKeyAPIKeyACLTrustForwardedIP: "false"},
-			wantEnabled:            true,
-			wantForwardedIPUpdate:  "true",
+			wantEnabled:            false,
 			wantMigrationMarkerSet: true,
 		},
 		{
@@ -731,6 +789,12 @@ func TestSettingService_LoadForwardedClientIPSettingsMigration(t *testing.T) {
 			values:                 map[string]string{SettingKeyAPIKeyACLTrustForwardedIP: "false"},
 			trustedProxiesSet:      true,
 			wantEnabled:            false,
+			wantMigrationMarkerSet: true,
+		},
+		{
+			name:                   "legacy explicit true remains enabled",
+			values:                 map[string]string{SettingKeyAPIKeyACLTrustForwardedIP: "true"},
+			wantEnabled:            true,
 			wantMigrationMarkerSet: true,
 		},
 		{
@@ -832,8 +896,8 @@ func TestSettingService_LoadForwardedClientIPSettingsWriteFailureUsesComputedMod
 		trustedProxiesSet bool
 		wantEnabled       bool
 	}{
-		{name: "compatibility migration remains effective", wantEnabled: true},
-		{name: "explicit proxy policy remains secure", trustedProxiesSet: true, wantEnabled: false},
+		{name: "stored false remains secure", wantEnabled: false},
+		{name: "stored false with explicit proxy policy remains secure", trustedProxiesSet: true, wantEnabled: false},
 	}
 
 	for _, test := range tests {
