@@ -125,6 +125,17 @@ func (r *upstreamBillingProbeAccountRepo) UpdateUpstreamBillingProbeSnapshot(_ c
 	return nil
 }
 
+func (r *upstreamBillingProbeAccountRepo) UpdateUpstreamBalanceProbeSnapshot(_ context.Context, account *Account, snapshot *UpstreamBalanceProbeSnapshot) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	stored := r.accounts[account.ID]
+	if stored.Extra == nil {
+		stored.Extra = make(map[string]any)
+	}
+	stored.Extra[UpstreamBalanceProbeExtraKey] = snapshot
+	return nil
+}
+
 func (r *upstreamBillingProbeAccountRepo) FindByExtraField(_ context.Context, key string, value any) ([]Account, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()

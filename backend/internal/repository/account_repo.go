@@ -58,6 +58,7 @@ var schedulerNeutralExtraKeyPrefixes = []string{
 	"codex_7d_",
 	"passive_usage_",
 	"upstream_billing_probe",
+	"upstream_balance_probe",
 }
 
 var schedulerNeutralExtraKeys = map[string]struct{}{
@@ -926,7 +927,7 @@ func (r *accountRepository) ListOpsAccountsForStats(ctx context.Context, platfor
 func accountListOrder(params pagination.PaginationParams) []func(*entsql.Selector) {
 	sortBy := strings.ToLower(strings.TrimSpace(params.SortBy))
 	sortOrder := params.NormalizedSortOrder(pagination.SortOrderAsc)
-	if sortBy == "upstream_billing_rate" {
+	if sortBy == "upstream_billing_rate" || sortBy == "upstream_balance" {
 		direction := "ASC"
 		tieOrder := entsql.Asc
 		if sortOrder == pagination.SortOrderDesc {
@@ -936,6 +937,9 @@ func accountListOrder(params pagination.PaginationParams) []func(*entsql.Selecto
 		return []func(*entsql.Selector){func(s *entsql.Selector) {
 			extra := s.C(dbaccount.FieldExtra)
 			expression := upstreamBillingRateSortExpression(extra)
+			if sortBy == "upstream_balance" {
+				expression = upstreamBalanceSortExpression(extra)
+			}
 			s.OrderExpr(entsql.Expr(expression + " " + direction + " NULLS LAST"))
 			s.OrderBy(tieOrder(s.C(dbaccount.FieldID)))
 		}}
@@ -1015,6 +1019,11 @@ func upstreamBillingRateSortExpression(extra string) string {
 	return "CASE WHEN " + rateEligible + " AND (jsonb_typeof(" + resolvedJSON + ") = 'number' OR jsonb_typeof(" + effectiveJSON + ") = 'number') THEN CASE WHEN jsonb_typeof(" +
 		resolvedJSON + ") = 'number' AND jsonb_typeof(" + peakEnabledJSON + ") = 'boolean' THEN CASE WHEN " + billingScope + " = 'token' THEN " + dynamicRate + " ELSE NULL END WHEN " + legacySnapshot +
 		" AND jsonb_typeof(" + effectiveJSON + ") = 'number' THEN (" + effective + ")::numeric END END"
+}
+
+func upstreamBalanceSortExpression(extra string) string {
+	remaining := extra + " #> '{upstream_balance_probe,data,remaining}'"
+	return "CASE WHEN jsonb_typeof(" + remaining + ") = 'number' THEN (" + remaining + ")::numeric END"
 }
 
 func (r *accountRepository) ListByGroup(ctx context.Context, groupID int64) ([]service.Account, error) {
@@ -2410,7 +2419,8 @@ func (r *accountRepository) UpdateExtra(ctx context.Context, id int64, updates m
 	}
 
 	clearProbeSnapshot := upstreamBillingProbeExplicitlyDisabled(updates) || upstreamBillingProbeSnapshotClearRequested(updates)
-	durableSchedulerChange := shouldEnqueueSchedulerOutboxForExtraUpdates(updates) || clearProbeSnapshot
+	clearBalanceSnapshot := upstreamBalanceProbeExplicitlyDisabled(updates) || upstreamBalanceProbeSnapshotClearRequested(updates)
+	durableSchedulerChange := shouldEnqueueSchedulerOutboxForExtraUpdates(updates) || clearProbeSnapshot || clearBalanceSnapshot
 	baseCtx := ctx
 	contextTx := dbent.TxFromContext(ctx)
 	client := clientFromContext(ctx, r.client)
@@ -2430,6 +2440,9 @@ func (r *accountRepository) UpdateExtra(ctx context.Context, id int64, updates m
 	extraExpression := "COALESCE(extra, '{}'::jsonb) || $1::jsonb"
 	if clearProbeSnapshot {
 		extraExpression = "(" + extraExpression + ") - 'upstream_billing_probe'"
+	}
+	if clearBalanceSnapshot {
+		extraExpression = "(" + extraExpression + ") - 'upstream_balance_probe'"
 	}
 	result, err := client.ExecContext(
 		ctx,
@@ -2469,6 +2482,88 @@ func (r *accountRepository) UpdateExtra(ctx context.Context, id int64, updates m
 		}
 	}
 	return nil
+}
+
+// UpdateUpstreamBalanceProbeSnapshot stores a balance result with the same
+// identity/CAS/outbox guarantees as the billing probe.
+func (r *accountRepository) UpdateUpstreamBalanceProbeSnapshot(ctx context.Context, account *service.Account, snapshot *service.UpstreamBalanceProbeSnapshot) error {
+	if account == nil || snapshot == nil {
+		return service.ErrAccountNilInput
+	}
+	if dbent.TxFromContext(ctx) == nil {
+		tx, err := r.client.Tx(ctx)
+		if errors.Is(err, dbent.ErrTxStarted) {
+			return r.updateUpstreamBalanceProbeSnapshotInTx(ctx, account, snapshot)
+		}
+		if err != nil {
+			return err
+		}
+		defer func() { _ = tx.Rollback() }()
+		if err := r.updateUpstreamBalanceProbeSnapshotInTx(dbent.NewTxContext(ctx, tx), account, snapshot); err != nil {
+			return err
+		}
+		if err := tx.Commit(); err != nil {
+			return err
+		}
+		r.syncSchedulerAccountSnapshot(ctx, account.ID)
+		return nil
+	}
+	return r.updateUpstreamBalanceProbeSnapshotInTx(ctx, account, snapshot)
+}
+
+func (r *accountRepository) updateUpstreamBalanceProbeSnapshotInTx(ctx context.Context, account *service.Account, snapshot *service.UpstreamBalanceProbeSnapshot) error {
+	payload, err := json.Marshal(map[string]any{service.UpstreamBalanceProbeExtraKey: snapshot})
+	if err != nil {
+		return err
+	}
+	credentials, err := json.Marshal(account.Credentials)
+	if err != nil {
+		return err
+	}
+	var expectedSnapshot, expectedEnabled any
+	if account.Extra != nil {
+		expectedSnapshot = account.Extra[service.UpstreamBalanceProbeExtraKey]
+		expectedEnabled = account.Extra[service.UpstreamBalanceProbeEnabledExtraKey]
+	}
+	expectedSnapshotJSON, err := json.Marshal(expectedSnapshot)
+	if err != nil {
+		return err
+	}
+	expectedEnabledJSON, err := json.Marshal(expectedEnabled)
+	if err != nil {
+		return err
+	}
+	client := clientFromContext(ctx, r.client)
+	proxyMatches, err := lockAndMatchProbeProxyIdentity(ctx, client, account)
+	if err != nil {
+		return err
+	}
+	if !proxyMatches {
+		return service.ErrUpstreamBillingProbeIdentityChanged
+	}
+	var proxyID any
+	if account.ProxyID != nil {
+		proxyID = *account.ProxyID
+	}
+	result, err := client.ExecContext(ctx, `
+		UPDATE accounts
+		SET extra = COALESCE(extra, '{}'::jsonb) || $1::jsonb, updated_at = NOW()
+		WHERE id = $2 AND platform = $3 AND type = $4 AND credentials = $5::jsonb
+			AND proxy_id IS NOT DISTINCT FROM $6
+			AND COALESCE(extra -> 'upstream_balance_probe', 'null'::jsonb) = $7::jsonb
+			AND COALESCE(extra -> 'upstream_balance_probe_enabled', 'null'::jsonb) = $8::jsonb
+			AND deleted_at IS NULL`, string(payload), account.ID, account.Platform, account.Type, string(credentials), proxyID, string(expectedSnapshotJSON), string(expectedEnabledJSON))
+	if err != nil {
+		return err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
+		return service.ErrUpstreamBillingProbeIdentityChanged
+	}
+	return enqueueSchedulerOutbox(ctx, client, service.SchedulerOutboxEventAccountChanged, &account.ID, nil, nil)
 }
 
 // UpdateUpstreamBillingProbeSnapshot stores a probe result only while the
@@ -2640,6 +2735,16 @@ func upstreamBillingProbeSnapshotClearRequested(extra map[string]any) bool {
 	return ok && value == nil
 }
 
+func upstreamBalanceProbeExplicitlyDisabled(extra map[string]any) bool {
+	enabled, ok := extra[service.UpstreamBalanceProbeEnabledExtraKey].(bool)
+	return ok && !enabled
+}
+
+func upstreamBalanceProbeSnapshotClearRequested(extra map[string]any) bool {
+	value, ok := extra[service.UpstreamBalanceProbeExtraKey]
+	return ok && value == nil
+}
+
 func (r *accountRepository) BulkUpdate(ctx context.Context, ids []int64, updates service.AccountBulkUpdate) (int64, error) {
 	if len(ids) == 0 {
 		return 0, nil
@@ -2722,6 +2827,9 @@ func (r *accountRepository) BulkUpdate(ctx context.Context, ids []int64, updates
 		extraExpression := "COALESCE(extra, '{}'::jsonb) || $" + itoa(idx) + "::jsonb"
 		if upstreamBillingProbeExplicitlyDisabled(updates.Extra) || upstreamBillingProbeSnapshotClearRequested(updates.Extra) {
 			extraExpression = "(" + extraExpression + ") - 'upstream_billing_probe'"
+		}
+		if upstreamBalanceProbeExplicitlyDisabled(updates.Extra) || upstreamBalanceProbeSnapshotClearRequested(updates.Extra) {
+			extraExpression = "(" + extraExpression + ") - 'upstream_balance_probe'"
 		}
 		setClauses = append(setClauses, "extra = "+extraExpression)
 		args = append(args, payload)
@@ -3351,6 +3459,45 @@ func (r *accountRepository) ListDueUpstreamBillingProbeAccounts(ctx context.Cont
 	for _, account := range accounts {
 		if account != nil {
 			out = append(out, *account)
+		}
+	}
+	return out, nil
+}
+
+func (r *accountRepository) ListDueUpstreamBalanceProbeAccounts(ctx context.Context, now time.Time, limit int) ([]service.Account, error) {
+	if limit <= 0 {
+		return []service.Account{}, nil
+	}
+	if r.sql == nil {
+		return nil, errors.New("account repository SQL executor not configured")
+	}
+	rows, err := r.sql.QueryContext(ctx, `SELECT id FROM accounts WHERE deleted_at IS NULL AND status = 'active' AND platform = 'openai' AND type = 'apikey' AND extra @> '{"upstream_balance_probe_enabled": true}'::jsonb AND (extra->'upstream_balance_probe'->>'next_probe_at' IS NULL OR (extra->'upstream_balance_probe'->>'next_probe_at')::timestamptz <= $1) ORDER BY id LIMIT $2`, now.UTC(), limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	ids := make([]int64, 0, limit)
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if len(ids) == 0 {
+		return []service.Account{}, nil
+	}
+	accounts, err := r.GetByIDs(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]service.Account, 0, len(accounts))
+	for _, a := range accounts {
+		if a != nil {
+			out = append(out, *a)
 		}
 	}
 	return out, nil

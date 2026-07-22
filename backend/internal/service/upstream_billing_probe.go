@@ -71,8 +71,10 @@ const (
 
 // UpstreamBillingProbeSettings controls the periodic probe runner.
 type UpstreamBillingProbeSettings struct {
-	Enabled         bool `json:"enabled"`
-	IntervalMinutes int  `json:"interval_minutes"`
+	Enabled                bool `json:"enabled"`
+	IntervalMinutes        int  `json:"interval_minutes"`
+	BalanceEnabled         bool `json:"balance_enabled"`
+	BalanceIntervalMinutes int  `json:"balance_interval_minutes"`
 }
 
 // UpstreamBillingProbeSnapshot is persisted in accounts.extra. Data is kept as
@@ -137,6 +139,9 @@ func (s *SettingService) GetUpstreamBillingProbeSettings(ctx context.Context) (*
 	if settings.IntervalMinutes == 0 {
 		settings.IntervalMinutes = defaults.IntervalMinutes
 	}
+	if settings.BalanceIntervalMinutes == 0 {
+		settings.BalanceIntervalMinutes = defaults.BalanceIntervalMinutes
+	}
 	normalizeUpstreamBillingProbeSettings(&settings)
 	return &settings, nil
 }
@@ -149,10 +154,19 @@ func (s *SettingService) SetUpstreamBillingProbeSettings(ctx context.Context, se
 	if settings == nil {
 		return infraerrors.BadRequest("INVALID_UPSTREAM_BILLING_PROBE_SETTINGS", "settings cannot be nil")
 	}
+	if settings.BalanceIntervalMinutes == 0 {
+		settings.BalanceIntervalMinutes = upstreamBillingProbeDefaultIntervalMinutes
+	}
 	if settings.IntervalMinutes < upstreamBillingProbeMinIntervalMinutes || settings.IntervalMinutes > upstreamBillingProbeMaxIntervalMinutes {
 		return infraerrors.BadRequest(
 			"INVALID_UPSTREAM_BILLING_PROBE_INTERVAL",
 			fmt.Sprintf("interval_minutes must be between %d and %d", upstreamBillingProbeMinIntervalMinutes, upstreamBillingProbeMaxIntervalMinutes),
+		)
+	}
+	if settings.BalanceIntervalMinutes < upstreamBillingProbeMinIntervalMinutes || settings.BalanceIntervalMinutes > upstreamBillingProbeMaxIntervalMinutes {
+		return infraerrors.BadRequest(
+			"INVALID_UPSTREAM_BALANCE_PROBE_INTERVAL",
+			fmt.Sprintf("balance_interval_minutes must be between %d and %d", upstreamBillingProbeMinIntervalMinutes, upstreamBillingProbeMaxIntervalMinutes),
 		)
 	}
 	normalizeUpstreamBillingProbeSettings(settings)
@@ -164,7 +178,10 @@ func (s *SettingService) SetUpstreamBillingProbeSettings(ctx context.Context, se
 }
 
 func defaultUpstreamBillingProbeSettings() *UpstreamBillingProbeSettings {
-	return &UpstreamBillingProbeSettings{Enabled: true, IntervalMinutes: upstreamBillingProbeDefaultIntervalMinutes}
+	return &UpstreamBillingProbeSettings{
+		Enabled: true, IntervalMinutes: upstreamBillingProbeDefaultIntervalMinutes,
+		BalanceEnabled: true, BalanceIntervalMinutes: upstreamBillingProbeDefaultIntervalMinutes,
+	}
 }
 
 func normalizeUpstreamBillingProbeSettings(settings *UpstreamBillingProbeSettings) {
@@ -173,6 +190,12 @@ func normalizeUpstreamBillingProbeSettings(settings *UpstreamBillingProbeSetting
 	}
 	if settings.IntervalMinutes > upstreamBillingProbeMaxIntervalMinutes {
 		settings.IntervalMinutes = upstreamBillingProbeMaxIntervalMinutes
+	}
+	if settings.BalanceIntervalMinutes < upstreamBillingProbeMinIntervalMinutes {
+		settings.BalanceIntervalMinutes = upstreamBillingProbeMinIntervalMinutes
+	}
+	if settings.BalanceIntervalMinutes > upstreamBillingProbeMaxIntervalMinutes {
+		settings.BalanceIntervalMinutes = upstreamBillingProbeMaxIntervalMinutes
 	}
 }
 
@@ -278,6 +301,7 @@ func (s *UpstreamBillingProbeService) Stop() {
 func (s *UpstreamBillingProbeService) runLoop() {
 	defer s.wg.Done()
 	_ = s.RunDue(s.parentCtx)
+	_ = s.RunBalanceDue(s.parentCtx)
 	ticker := time.NewTicker(upstreamBillingProbeCycleInterval)
 	defer ticker.Stop()
 	for {
@@ -287,6 +311,9 @@ func (s *UpstreamBillingProbeService) runLoop() {
 		case <-ticker.C:
 			if err := s.RunDue(s.parentCtx); err != nil {
 				logger.LegacyPrintf("service.upstream_billing_probe", "run_due_failed: err=%v", err)
+			}
+			if err := s.RunBalanceDue(s.parentCtx); err != nil {
+				logger.LegacyPrintf("service.upstream_balance_probe", "run_due_failed: err=%v", err)
 			}
 		}
 	}

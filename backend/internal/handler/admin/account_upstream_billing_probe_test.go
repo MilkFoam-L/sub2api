@@ -21,6 +21,8 @@ func setupUpstreamBillingProbeRouter() *gin.Engine {
 	router.GET("/admin/accounts/upstream-billing-probe/settings", handler.GetUpstreamBillingProbeSettings)
 	router.POST("/admin/accounts/upstream-billing-probe/batch", handler.ProbeUpstreamBillingBatch)
 	router.PUT("/admin/accounts/:id/upstream-billing-probe", handler.SetUpstreamBillingProbeEnabled)
+	router.POST("/admin/accounts/upstream-balance-probe/batch", handler.ProbeUpstreamBalanceBatch)
+	router.PUT("/admin/accounts/:id/upstream-balance-probe", handler.SetUpstreamBalanceProbeEnabled)
 	return router
 }
 
@@ -68,4 +70,18 @@ func TestAccountHandlerSetUpstreamBillingProbeEnabledRequiresValue(t *testing.T)
 	router.ServeHTTP(recorder, request)
 
 	require.Equal(t, http.StatusBadRequest, recorder.Code)
+}
+
+func TestAccountHandlerUpstreamBalanceProbeValidatesRequests(t *testing.T) {
+	router := setupUpstreamBillingProbeRouter()
+	for method, values := range map[string][2]string{
+		http.MethodPost: {"/admin/accounts/upstream-balance-probe/batch", `{"account_ids":[]}`},
+		http.MethodPut:  {"/admin/accounts/not-an-id/upstream-balance-probe", `{"enabled":true}`},
+	} {
+		recorder := httptest.NewRecorder()
+		request := httptest.NewRequest(method, values[0], bytes.NewBufferString(values[1]))
+		request.Header.Set("Content-Type", "application/json")
+		router.ServeHTTP(recorder, request)
+		require.Equal(t, http.StatusBadRequest, recorder.Code)
+	}
 }
