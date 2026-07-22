@@ -211,6 +211,8 @@ export default {
   auth: {
     welcomeBack: 'Welcome Back',
     signInToAccount: 'Sign in to your account to continue',
+    privacyCommitment: 'Privacy commitment',
+    privacyDescription: 'We do not log API request content, sell user data to third parties, or use it for advertising or model training. Data is processed temporarily only as required to operate the service.',
     signIn: 'Sign In',
     signingIn: 'Signing in...',
     createAccount: 'Create Account',

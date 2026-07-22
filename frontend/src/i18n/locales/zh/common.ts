@@ -211,6 +211,8 @@ export default {
   auth: {
     welcomeBack: '欢迎回来',
     signInToAccount: '登录您的账户以继续',
+    privacyCommitment: '隐私承诺',
+    privacyDescription: '我们不记录任何 API 请求内容，不向第三方出售用户数据，也不会将用户数据用于广告投放或模型训练。系统仅在提供服务所必需的范围内，对相关数据进行临时处理。',
     signIn: '登录',
     signingIn: '登录中...',
     createAccount: '创建账户',

@@ -10,6 +10,7 @@
           {{ t('auth.signInToAccount') }}
         </p>
       </div>
+
       <!-- Login Form -->
       <form @submit.prevent="handleLogin" class="space-y-5">
         <!-- Email Input -->
@@ -77,6 +78,8 @@
             </router-link>
           </div>
         </div>
+
+        <AuthPrivacyNotice />
 
         <!-- Turnstile Widget -->
         <div v-if="turnstileEnabled && turnstileSiteKey">
@@ -202,6 +205,7 @@ import { computed, ref, reactive, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { AuthLayout } from '@/components/layout'
+import AuthPrivacyNotice from '@/components/auth/AuthPrivacyNotice.vue'
 import LinuxDoOAuthSection from '@/components/auth/LinuxDoOAuthSection.vue'
 import DingTalkOAuthSection from '@/components/auth/DingTalkOAuthSection.vue'
 import OidcOAuthSection from '@/components/auth/OidcOAuthSection.vue'
