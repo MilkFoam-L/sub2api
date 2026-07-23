@@ -1015,7 +1015,7 @@
 - `backend/cmd/server/VERSION`：从 `0.1.152` 更新为 `0.1.153`。
 - 回滚方式：使用 `git revert -m 1 <本次 v0.1.153 merge commit>` 回退合并；迁移 `174_add_usage_logs_api_key_latest_ip_index_notx.sql` 仅新增索引，部署前回滚不涉及数据库。
 
-## 2026-07-27 - Task: 接入 NewAPI 用户真实余额
+## 2026-07-23 - Task: 接入 NewAPI 用户真实余额
 
 ### What was done
 - 为 OpenAI API Key 账号新增可选的 NewAPI Dashboard Access Token/PAT 与数字用户 ID 配置；Access Token 纳入统一敏感凭据脱敏与编辑保留机制，不会通过账号 DTO 返回前端。
@@ -1036,7 +1036,7 @@
 - 未连接真实 NewAPI 多版本实例，协议兼容性由新旧 `/api/status` 结构和失败关闭测试覆盖；部署后仍建议用目标 NewAPI 实例做一次人工余额核对。
 - 回滚方式：对本次功能提交执行 `git revert <commit>`；无数据库迁移、生产配置或镜像变更。
 
-## 2026-07-27 - Task: 修复余额自动刷新与设置保存联动
+## 2026-07-23 - Task: 修复余额自动刷新与设置保存联动
 
 ### What was done
 - 将同一周期内的上游倍率探测与上游余额探测改为并发启动，避免慢倍率请求串行阻塞余额自动刷新；两条任务仍保留各自的开关、到期筛选、分布式锁和共享并发上限。
@@ -1054,7 +1054,7 @@
 - 修复不改变余额探测间隔、账号启用条件、API 合同或凭据处理，仅消除两条周期任务之间的串行等待和前端共享状态。
 - 回滚方式：对本次修复提交执行 `git revert <commit>`；无数据库迁移或配置回滚。
 
-## 2026-07-27 - Task: 发布最新余额修复腾讯云镜像
+## 2026-07-23 - Task: 发布最新余额修复腾讯云镜像
 
 ### What was done
 - 基于已推送且全量验证通过的提交 `74bcb6d8`，使用生产根 Dockerfile 的等价 no-BuildKit 文件构建 `linux/amd64` release 镜像。
@@ -1071,3 +1071,34 @@
 - 发布前 `latest` 回滚摘要为 `sha256:1e1bfccd35b9ed035d4ff0f0079fcc0eb8bcd7db481cae9965312d88d1a494d2`。
 - 本机仍使用 Docker legacy builder，构建上下文约 3.0GB；这些是后续构建效率优化项，不影响本次镜像完整性或运行正确性。
 - 回滚方式：部署端回切到发布前摘要；代码层正常 `git revert 74bcb6d8a` 和 `git revert 6eb9a817d`，禁止强推。
+
+## 2026-07-23 - Task: 最终发布审查与 NewAPI PAT 传输加固
+
+### What was done
+- 对余额后端协议、安全、并发、数据一致性及前端展示、交互、凭据脱敏、i18n 和设置保存执行独立只读复核；确认账号 DTO 不会返回 `newapi_access_token` 明文。
+- 修复最终审查发现的发布阻断安全问题：当账号配置 NewAPI Dashboard PAT 时，控制面余额探测不再继承通用上游的 `allow_insecure_http`，而是强制使用 HTTPS，并在任何出站请求前拒绝包含 URL userinfo 的地址。
+- 新增安全回归测试，证明 HTTP/userinfo 目标返回 `invalid_base_url`，且不会触发任何上游请求；修复提交 `3bcb1486a` 已推送到 `origin/main`。
+- 基于安全修复提交重建 `linux/amd64` 镜像，推送可追溯标签 `0.1.163-3bcb1486-20260723051001`，并重新指向 `v0.1.163` 与 `latest`；Task 24 的旧 `0.1.163` 摘要已被本次安全版取代。
+- 清理隔离验证容器、网络和命名卷；未修改生产配置、密钥、数据库或线上实例。
+
+### Validation
+- 新增安全测试先失败，确认明文 PAT 请求问题真实存在；修复后目标测试、`go test ./internal/service -count=1`、`go vet ./internal/service` 和后端 `go test ./...` 全量通过。
+- 前端最终基线验证通过：199 个测试文件、1417 项测试通过；Vue/TypeScript 检查、Vite 生产构建和全量 ESLint 通过。构建仅保留既有 Browserslist、动态/静态 import 与大 chunk 警告。
+- 独立安全复核确认原高风险已关闭，未发现仍存在的高风险或阻断发布问题。
+- 镜像版本输出：`Sub2API 0.1.163 (commit: 3bcb1486, built: 2026-07-23T05:10:01Z)`；默认入口以 `uid=1000(sub2api)` 执行，`psql`/`pg_dump` 为 18.4，镜像包含健康检查并为 `linux/amd64`。
+- 隔离 PostgreSQL 18 + Redis 8 环境自动初始化、迁移和启动成功，容器达到 healthy，`/health` 返回 `{"status":"ok"}`。
+- 腾讯云远端三个标签的 manifest 均为 `linux/amd64`，摘要一致：`sha256:1a1249c87871419b03ae2348481d7e56931d60e09342816f57f3daea36786eb2`。
+- Git 核验：安全修复基线 `3bcb1486aec961c8a766ef55668291770cfdfda7` 已同步到 `origin/main`；本次收尾记录单独提交，不改变镜像代码内容。
+
+### Server upgrade
+1. 升级前备份数据库，并记录当前应用镜像摘要；推荐保留 `0.1.162-74bcb6d8-20260722152041` 作为功能级回滚点。
+2. 将部署镜像设置为不可变标签 `ccr.ccs.tencentyun.com/apophis-chat/sub2api:0.1.163-3bcb1486-20260723051001`；也可使用 `v0.1.163`，但不可变标签更便于审计。
+3. 执行 `docker pull ccr.ccs.tencentyun.com/apophis-chat/sub2api:0.1.163-3bcb1486-20260723051001`，随后用现有 Compose 配置重建应用服务，不需要数据库迁移参数或新增环境变量。
+4. 升级后核对容器版本、`/health`、登录、账号列表倍率/余额列，以及目标 NewAPI 实例的真实余额换算。
+5. 安全兼容提示：使用 Dashboard PAT 的 NewAPI 余额探测现在强制要求 HTTPS；仍使用 HTTP 控制面地址的账号会失败关闭且不会发送 PAT，升级前应先为 NewAPI 配置 HTTPS。
+
+### Risks / rollback
+- 无已知高风险或发布阻断问题。未连接真实 NewAPI 多版本实例，部署后仍需用目标实例人工核对一次余额；Windows 环境缺少 GCC，Go race detector 未执行。
+- 非阻断审查项包括：极端临时故障下的 PAT 快照保留分类、批量轮换 PAT/用户 ID 的旧快照即时失效、极少见的设置并发保存竞态、长周期 leader lock 续租，以及触屏/键盘 Tooltip 等可访问性增强；这些不造成凭据明文响应泄露或当前发布阻断，留待后续独立任务处理。
+- 本机缺少 buildx，使用生产根 Dockerfile 的等价 legacy-builder 临时副本构建；约 3.0GB 构建上下文仅影响构建效率。
+- 如升级失败，优先回切不可变标签 `0.1.162-74bcb6d8-20260722152041`（摘要 `sha256:f73245417272a2a7f50c0e192447b32f746690d65ad31597fc72ca540528a905`）；不建议回切 Task 24 的旧 `0.1.163` 摘要，因为其尚未包含本次 PAT HTTPS 加固。代码回滚使用正常 `git revert`，不得重写公共历史。
