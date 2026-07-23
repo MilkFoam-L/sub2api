@@ -13,6 +13,7 @@ import (
 	"log"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"regexp"
 	"strings"
 	"sync"
@@ -116,6 +117,27 @@ func (s *AccountTestService) validateUpstreamBaseURL(raw string) (string, error)
 		return "", err
 	}
 	return normalized, nil
+}
+
+func (s *AccountTestService) validateCredentialedControlBaseURL(raw string) (string, error) {
+	if s.cfg == nil {
+		return "", errors.New("config is not available")
+	}
+	parsed, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil {
+		return "", err
+	}
+	if parsed.User != nil {
+		return "", errors.New("url userinfo is not allowed")
+	}
+	options := urlvalidator.ValidationOptions{
+		AllowPrivate: s.cfg.Security.URLAllowlist.AllowPrivateHosts,
+	}
+	if s.cfg.Security.URLAllowlist.Enabled {
+		options.AllowedHosts = s.cfg.Security.URLAllowlist.UpstreamHosts
+		options.RequireAllowlist = true
+	}
+	return urlvalidator.ValidateHTTPSURL(raw, options)
 }
 
 // generateSessionString generates a Claude Code style session string.

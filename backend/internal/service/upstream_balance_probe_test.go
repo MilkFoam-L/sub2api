@@ -296,6 +296,40 @@ func TestParseNewAPIStatusQuotaPerUnitSupportsLegacyShapes(t *testing.T) {
 	}
 }
 
+func TestProbeBalanceRejectsInsecureNewAPIUserCredentialTargets(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		baseURL string
+	}{
+		{name: "plain http", baseURL: "http://upstream.example"},
+		{name: "embedded userinfo", baseURL: "https://user:password@upstream.example"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			account := &Account{
+				ID: 80, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Status: StatusActive,
+				Credentials: map[string]any{
+					"base_url":            tc.baseURL,
+					"newapi_access_token": "dashboard-token",
+				},
+				Extra: map[string]any{UpstreamBalanceProbeEnabledExtraKey: true},
+			}
+			repo := &upstreamBillingProbeAccountRepo{accounts: map[int64]*Account{80: account}}
+			upstream := &upstreamBillingProbeHTTPStub{responseForURL: func(*http.Request) (*http.Response, error) {
+				t.Fatal("credentialed request must not be sent to an insecure target")
+				return nil, nil
+			}}
+			svc := newUpstreamBillingProbeTestService(repo, upstream, &upstreamBillingProbeSettingRepo{})
+
+			snap, err := svc.ProbeBalanceAccount(context.Background(), 80)
+
+			require.NoError(t, err)
+			require.Equal(t, UpstreamBillingProbeStatusFailed, snap.Status)
+			require.Equal(t, "invalid_base_url", snap.LastError)
+			require.Zero(t, upstream.calls.Load())
+		})
+	}
+}
+
 func TestProbeBalanceUsesNewAPIUserCredentialsWithOptionalUserHeader(t *testing.T) {
 	for _, tc := range []struct {
 		name       string

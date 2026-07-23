@@ -237,7 +237,13 @@ func (s *UpstreamBillingProbeService) probeLoadedBalanceAccount(ctx context.Cont
 	if base == "" {
 		base = "https://api.openai.com"
 	}
-	base, err := s.accountTestService.validateUpstreamBaseURL(base)
+	accessToken := strings.TrimSpace(a.GetCredential("newapi_access_token"))
+	var err error
+	if accessToken != "" {
+		base, err = s.accountTestService.validateCredentialedControlBaseURL(base)
+	} else {
+		base, err = s.accountTestService.validateUpstreamBaseURL(base)
+	}
 	if err != nil {
 		return fail("invalid_base_url", 0)
 	}
@@ -252,7 +258,7 @@ func (s *UpstreamBillingProbeService) probeLoadedBalanceAccount(ctx context.Cont
 	if s.accountTestService.tlsFPProfileService != nil {
 		tlsProfile = s.accountTestService.tlsFPProfileService.ResolveTLSProfile(a)
 	}
-	if accessToken := strings.TrimSpace(a.GetCredential("newapi_access_token")); accessToken != "" {
+	if accessToken != "" {
 		return s.probeNewAPIUserBalance(ctx, a, interval, now, base, proxyURL, accessToken, strings.TrimSpace(a.GetCredential("newapi_user_id")), tlsProfile, fail)
 	}
 	if key == "" {
