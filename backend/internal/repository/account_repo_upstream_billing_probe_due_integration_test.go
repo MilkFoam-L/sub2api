@@ -49,3 +49,43 @@ func TestListDueUpstreamBillingProbeAccountsHandlesInvalidCalendarDate(t *testin
 	require.Equal(t, invalidID, accounts[0].ID)
 	require.Equal(t, dueID, accounts[1].ID)
 }
+
+func TestListDueUpstreamBalanceProbeAccountsHandlesInvalidCalendarDateAndOrdersByDueTime(t *testing.T) {
+	ctx := context.Background()
+	tx := testEntTx(t)
+	repo := newAccountRepositoryWithSQL(tx.Client(), tx, nil)
+	now := time.Date(2026, time.July, 23, 12, 0, 0, 0, time.UTC)
+	_, err := tx.ExecContext(ctx, `
+		UPDATE accounts
+		SET extra = extra - 'upstream_balance_probe_enabled' - 'upstream_balance_probe'
+	`)
+	require.NoError(t, err)
+
+	insert := func(name, nextProbeAt string) int64 {
+		t.Helper()
+		var id int64
+		extra := fmt.Sprintf(`{
+			"upstream_balance_probe_enabled": true,
+			"upstream_balance_probe": {"status": "ok", "next_probe_at": %q}
+		}`, nextProbeAt)
+		err := scanSingleRow(ctx, tx, `
+			INSERT INTO accounts (name, platform, type, status, extra)
+			VALUES ($1, 'openai', $2, 'active', $3::jsonb)
+			RETURNING id
+		`, []any{name, service.AccountTypeAPIKey, extra}, &id)
+		require.NoError(t, err)
+		return id
+	}
+
+	invalidID := insert("balance-invalid-calendar-date", "2026-99-99T12:00:00Z")
+	earlierDueID := insert("balance-earlier-due", "2026-07-23T10:00:00Z")
+	laterDueID := insert("balance-later-due", "2026-07-23T11:00:00Z")
+	_ = insert("balance-not-due", "2026-07-23T12:00:01Z")
+
+	accounts, err := repo.ListDueUpstreamBalanceProbeAccounts(ctx, now, 12)
+	require.NoError(t, err)
+	require.Len(t, accounts, 3)
+	require.Equal(t, invalidID, accounts[0].ID)
+	require.Equal(t, earlierDueID, accounts[1].ID)
+	require.Equal(t, laterDueID, accounts[2].ID)
+}

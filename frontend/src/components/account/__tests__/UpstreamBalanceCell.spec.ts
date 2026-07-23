@@ -11,12 +11,17 @@ vi.mock('@/components/common/HelpTooltip.vue', () => ({
   default: { template: '<div><slot name="trigger" /><slot /></div>' }
 }))
 
-const account = (snapshot?: Record<string, unknown>): Account => ({
+const account = (
+  snapshot?: Record<string, unknown>,
+  extra: Record<string, unknown> = {}
+): Account => ({
   id: 1, name: 'test', platform: 'openai', type: 'apikey', proxy_id: null,
   concurrency: 1, priority: 1, status: 'active', error_message: null,
   last_used_at: null, expires_at: null, auto_pause_on_expired: false,
   created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z', schedulable: true,
-  extra: snapshot ? { upstream_balance_probe: snapshot } : undefined
+  extra: snapshot || Object.keys(extra).length
+    ? { ...extra, ...(snapshot ? { upstream_balance_probe: snapshot } : {}) }
+    : undefined
 })
 
 describe('UpstreamBalanceCell', () => {
@@ -65,10 +70,94 @@ describe('UpstreamBalanceCell', () => {
     expect(wrapper.text()).not.toContain('admin.accounts.upstreamBalance.unlimited')
   })
 
-  it('renders stale snapshots as expired', () => {
+  it('renders stale snapshots as expired with the last successful balance details', () => {
     const wrapper = mount(UpstreamBalanceCell, {
-      props: { account: account({ status: 'ok', data: { remaining: 2 }, received_at: '2020-01-01T00:00:00Z', fresh_until: '2020-01-02T00:00:00Z' }), now: Date.parse('2020-01-03T00:00:00Z') }
+      props: {
+        account: account({
+          status: 'ok',
+          data: { remaining: 2 },
+          received_at: '2020-01-01T00:00:00Z',
+          fresh_until: '2020-01-02T00:00:00Z',
+          next_probe_at: '2020-01-03T01:00:00Z'
+        }, { upstream_balance_probe_enabled: true }),
+        now: Date.parse('2020-01-03T00:00:00Z'),
+        globalProbeEnabled: true
+      }
     })
-    expect(wrapper.text()).toContain('admin.accounts.upstreamBalance.stale')
+    expect(wrapper.get('[data-testid="upstream-balance-value"]').text()).toBe('admin.accounts.upstreamBalance.stale')
+    expect(wrapper.text()).toContain('admin.accounts.upstreamBalance.lastDetectedBalance:2.0')
+    expect(wrapper.text()).toContain('admin.accounts.upstreamBalance.lastDetectedAt:')
+    expect(wrapper.text()).toContain('admin.accounts.upstreamBalance.elapsedSince:admin.accounts.upstreamBalance.daysAgo:2')
+    expect(wrapper.find('[data-testid="upstream-balance-next-probe"]').exists()).toBe(true)
+  })
+
+  it('shows the next refresh time and mirrors account and global probe states', async () => {
+    const wrapper = mount(UpstreamBalanceCell, {
+      props: {
+        account: account({
+          status: 'ok',
+          data: { remaining: 12.56 },
+          received_at: '2026-07-23T00:00:00Z',
+          fresh_until: '2026-07-23T02:00:00Z',
+          next_probe_at: '2026-07-23T01:00:00Z'
+        }, { upstream_balance_probe_enabled: true }),
+        now: Date.parse('2026-07-23T00:30:00Z'),
+        globalProbeEnabled: true
+      }
+    })
+
+    expect(wrapper.get('[data-testid="upstream-balance-next-probe"]').text()).toContain(
+      'admin.accounts.upstreamBalance.nextProbeAt:'
+    )
+    expect(wrapper.get('[data-testid="upstream-balance-probe-state"] span').classes()).toContain('text-emerald-400')
+    expect(wrapper.find('[data-testid="upstream-balance-global-probe-state"]').exists()).toBe(false)
+
+    await wrapper.setProps({ globalProbeEnabled: false })
+    expect(wrapper.find('[data-testid="upstream-balance-next-probe"]').exists()).toBe(false)
+    expect(wrapper.get('[data-testid="upstream-balance-global-probe-state"] span').classes()).toContain('text-red-400')
+
+    await wrapper.setProps({
+      globalProbeEnabled: true,
+      account: account(undefined, { upstream_balance_probe_enabled: false })
+    })
+    expect(wrapper.find('[data-testid="upstream-balance-next-probe"]').exists()).toBe(false)
+    expect(wrapper.get('[data-testid="upstream-balance-probe-state"] span').classes()).toContain('text-red-400')
+  })
+
+  it('keeps a fresh retained balance visible while marking the latest probe as failed', () => {
+    const wrapper = mount(UpstreamBalanceCell, {
+      props: {
+        account: account({
+          status: 'failed',
+          data: { remaining: 12.56 },
+          received_at: '2026-07-23T00:00:00Z',
+          fresh_until: '2026-07-23T01:00:00Z',
+          last_attempt_at: '2026-07-23T00:30:00Z',
+          next_probe_at: '2026-07-23T01:00:00Z',
+          last_error: 'http_error'
+        }, { upstream_balance_probe_enabled: true }),
+        now: Date.parse('2026-07-23T00:45:00Z'),
+        globalProbeEnabled: true
+      }
+    })
+
+    expect(wrapper.get('[data-testid="upstream-balance-value"]').text()).toBe('12.6')
+    expect(wrapper.text()).toContain('admin.accounts.upstreamBalance.failed')
+    expect(wrapper.text()).not.toContain('admin.accounts.upstreamBalance.stale')
+  })
+
+  it('hides an invalid next refresh timestamp', () => {
+    const wrapper = mount(UpstreamBalanceCell, {
+      props: {
+        account: account({
+          status: 'failed',
+          last_attempt_at: '2026-07-23T00:00:00Z',
+          next_probe_at: 'not-a-time'
+        }, { upstream_balance_probe_enabled: true }),
+        globalProbeEnabled: true
+      }
+    })
+
+    expect(wrapper.find('[data-testid="upstream-balance-next-probe"]').exists()).toBe(false)
   })
 })

@@ -3528,11 +3528,69 @@ func (r *accountRepository) ListDueUpstreamBalanceProbeAccounts(ctx context.Cont
 	if r.sql == nil {
 		return nil, errors.New("account repository SQL executor not configured")
 	}
-	rows, err := r.sql.QueryContext(ctx, `SELECT id FROM accounts WHERE deleted_at IS NULL AND status = 'active' AND platform = 'openai' AND type = 'apikey' AND extra @> '{"upstream_balance_probe_enabled": true}'::jsonb AND (extra->'upstream_balance_probe'->>'next_probe_at' IS NULL OR extra->'upstream_balance_probe'->>'next_probe_at' !~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\.[0-9]+)?(Z|[+-][0-9]{2}:[0-9]{2})$' OR (extra->'upstream_balance_probe'->>'next_probe_at')::timestamptz <= $1) ORDER BY id LIMIT $2`, now.UTC(), limit)
+
+	rows, err := r.sql.QueryContext(ctx, `
+		WITH candidates AS (
+			SELECT
+				id,
+				extra #>> '{upstream_balance_probe,status}' AS probe_status,
+				extra #>> '{upstream_balance_probe,next_probe_at}' AS next_probe_at
+			FROM accounts
+			WHERE deleted_at IS NULL
+				AND status = 'active'
+				AND platform = 'openai'
+				AND type = 'apikey'
+				AND extra @> '{"upstream_balance_probe_enabled": true}'::jsonb
+		), parsed AS MATERIALIZED (
+			SELECT
+				id,
+				probe_status,
+				next_probe_at,
+				next_probe_at ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\.[0-9]+)?(Z|[+-][0-9]{2}:[0-9]{2})$' AS rfc3339_shape,
+				jsonb_path_query_first_tz(
+					jsonb_build_object(
+						'value',
+						replace(regexp_replace(next_probe_at, 'Z$', '+00:00'), 'T', ' ')
+					),
+					'$.value.datetime()',
+					'{}'::jsonb,
+					true
+				) #>> '{}' AS parsed_next_probe_at
+			FROM candidates
+		), normalized AS (
+			SELECT
+				id,
+				probe_status,
+				next_probe_at,
+				parsed_next_probe_at,
+				rfc3339_shape AND parsed_next_probe_at IS NOT NULL AS valid_next_probe_at
+			FROM parsed
+		)
+		SELECT id
+		FROM normalized
+		WHERE probe_status NOT IN ('ok', 'unsupported', 'failed')
+			OR probe_status IS NULL
+			OR next_probe_at IS NULL
+			OR NOT valid_next_probe_at
+			OR CASE WHEN valid_next_probe_at THEN parsed_next_probe_at::timestamptz <= $1 ELSE FALSE END
+		ORDER BY
+			CASE
+				WHEN probe_status NOT IN ('ok', 'unsupported', 'failed')
+					OR probe_status IS NULL
+					OR next_probe_at IS NULL
+					OR NOT valid_next_probe_at
+				THEN 0
+				ELSE 1
+			END ASC,
+			CASE WHEN valid_next_probe_at THEN parsed_next_probe_at::timestamptz END ASC NULLS FIRST,
+			id ASC
+		LIMIT $2
+	`, now.UTC(), limit)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
+
 	ids := make([]int64, 0, limit)
 	for rows.Next() {
 		var id int64
@@ -3547,14 +3605,15 @@ func (r *accountRepository) ListDueUpstreamBalanceProbeAccounts(ctx context.Cont
 	if len(ids) == 0 {
 		return []service.Account{}, nil
 	}
+
 	accounts, err := r.GetByIDs(ctx, ids)
 	if err != nil {
 		return nil, err
 	}
 	out := make([]service.Account, 0, len(accounts))
-	for _, a := range accounts {
-		if a != nil {
-			out = append(out, *a)
+	for _, account := range accounts {
+		if account != nil {
+			out = append(out, *account)
 		}
 	}
 	return out, nil

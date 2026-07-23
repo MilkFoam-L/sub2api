@@ -216,6 +216,14 @@ func (s *UpstreamBillingProbeService) probeLoadedBalanceAccount(ctx context.Cont
 			n = prev.FailureCount + 1
 		}
 		snap := &UpstreamBalanceProbeSnapshot{Status: UpstreamBillingProbeStatusFailed, LastAttemptAt: now, NextProbeAt: now.Add(nextProbeDelay(interval, 0)), FailureCount: n, HTTPStatus: status, LastError: reason}
+		if prev != nil && !upstreamBalanceFailureInvalidatesData(reason, status) {
+			snap.Data = prev.Data
+			snap.ReceivedAt = prev.ReceivedAt
+			snap.FreshUntil = prev.FreshUntil
+			if snap.FreshUntil == nil && prev.Status == UpstreamBillingProbeStatusOK && prev.ReceivedAt != nil {
+				snap.FreshUntil = probeTimePtr(prev.ReceivedAt.Add(2 * time.Duration(interval) * time.Minute))
+			}
+		}
 		if w, ok := s.accountRepo.(upstreamBalanceSnapshotWriter); ok {
 			return snap, w.UpdateUpstreamBalanceProbeSnapshot(ctx, a, snap)
 		}
@@ -598,5 +606,26 @@ func classifyNewAPIBalanceHTTPError(status int) string {
 		return "newapi_rate_limited"
 	default:
 		return "newapi_http_error"
+	}
+}
+
+func upstreamBalanceFailureInvalidatesData(reason string, status int) bool {
+	switch reason {
+	case "invalid_base_url",
+		"missing_api_key",
+		"unsupported",
+		"newapi_auth_failed",
+		"newapi_forbidden",
+		"newapi_invalid_response",
+		"newapi_quota_unit_unavailable",
+		"newapi_user_auth_failed",
+		"newapi_user_balance_unavailable",
+		"newapi_user_invalid_response",
+		"newapi_user_quota_unit_unavailable":
+		return true
+	case "http_error", "newapi_http_error":
+		return status > 0 && status < http.StatusInternalServerError && status != http.StatusTooManyRequests
+	default:
+		return false
 	}
 }

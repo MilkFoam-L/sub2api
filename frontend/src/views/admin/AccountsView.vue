@@ -364,6 +364,7 @@
           <template #cell-upstream_balance="{ row }">
             <UpstreamBalanceCell
               :account="row"
+              :global-probe-enabled="upstreamBalanceProbeGloballyEnabled"
               :now="upstreamBillingNow"
               :probing="probingUpstreamBalance.has(row.id)"
               @probe="handleProbeUpstreamBalance(row)"
@@ -614,6 +615,7 @@ const exportingData = ref(false)
 const probingUpstreamBilling = reactive(new Set<number>())
 const probingUpstreamBalance = reactive(new Set<number>())
 const upstreamBillingProbeGloballyEnabled = ref<boolean | undefined>(undefined)
+const upstreamBalanceProbeGloballyEnabled = ref<boolean | undefined>(undefined)
 const upstreamBillingNow = ref(Date.now())
 let lastUpstreamBillingSortRefreshMinute = -1
 useIntervalFn(() => { upstreamBillingNow.value = Date.now() }, 60_000)
@@ -1281,6 +1283,7 @@ const loadUpstreamBillingProbeGlobalState = async () => {
   try {
     const settings = await adminAPI.accounts.getUpstreamBillingProbeSettings()
     upstreamBillingProbeGloballyEnabled.value = settings.enabled
+    upstreamBalanceProbeGloballyEnabled.value = settings.balance_enabled ?? true
   } catch (error) {
     console.error('Failed to load upstream billing probe settings:', error)
   }

@@ -524,7 +524,7 @@ describe('admin AccountsView bulk edit scope', () => {
     })
   })
 
-  it('passes the loaded global probe state to every upstream billing cell', async () => {
+  it('passes the loaded billing and balance global probe states to their cells', async () => {
     listAccounts.mockResolvedValue({
       items: [
         {
@@ -543,7 +543,12 @@ describe('admin AccountsView bulk edit scope', () => {
       page_size: 20,
       pages: 1
     })
-    getUpstreamBillingProbeSettings.mockResolvedValue({ enabled: false, interval_minutes: 30 })
+    getUpstreamBillingProbeSettings.mockResolvedValue({
+      enabled: false,
+      interval_minutes: 30,
+      balance_enabled: true,
+      balance_interval_minutes: 45
+    })
 
     const wrapper = mount(AccountsView, {
       global: {
@@ -552,11 +557,15 @@ describe('admin AccountsView bulk edit scope', () => {
           TablePageLayout: { template: '<div><slot name="table" /></div>' },
           DataTable: {
             props: ['data'],
-            template: '<div><div v-for="row in data" :key="row.id"><slot name="cell-upstream_billing_rate" :row="row" /></div></div>'
+            template: '<div><div v-for="row in data" :key="row.id"><slot name="cell-upstream_billing_rate" :row="row" /><slot name="cell-upstream_balance" :row="row" /></div></div>'
           },
           UpstreamBillingRateCell: {
             props: ['globalProbeEnabled'],
             template: '<span data-test="upstream-billing-cell" :data-global-enabled="String(globalProbeEnabled)"></span>'
+          },
+          UpstreamBalanceCell: {
+            props: ['globalProbeEnabled'],
+            template: '<span data-test="upstream-balance-cell" :data-global-enabled="String(globalProbeEnabled)"></span>'
           },
           Pagination: true,
           ConfirmDialog: true,
@@ -591,6 +600,7 @@ describe('admin AccountsView bulk edit scope', () => {
 
     expect(getUpstreamBillingProbeSettings).toHaveBeenCalledTimes(1)
     expect(wrapper.get('[data-test="upstream-billing-cell"]').attributes('data-global-enabled')).toBe('false')
+    expect(wrapper.get('[data-test="upstream-balance-cell"]').attributes('data-global-enabled')).toBe('true')
   })
 
   it('submits selected account IDs from every page for backend eligibility checks', async () => {

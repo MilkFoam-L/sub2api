@@ -181,6 +181,45 @@ func TestProbeBalanceFailsClosedWhenNewAPIStatusCannotConvertQuota(t *testing.T)
 	require.Nil(t, snap.Data)
 }
 
+func TestProbeBalanceRetainsFreshDataOnTransientFailure(t *testing.T) {
+	fixedNow := time.Date(2026, time.July, 23, 0, 30, 0, 0, time.UTC)
+	receivedAt := fixedNow.Add(-10 * time.Minute)
+	freshUntil := fixedNow.Add(50 * time.Minute)
+	previous := &UpstreamBalanceProbeSnapshot{
+		Status:        UpstreamBillingProbeStatusOK,
+		Data:          map[string]any{"source": "newapi_user", "remaining": 12.5},
+		ReceivedAt:    &receivedAt,
+		FreshUntil:    &freshUntil,
+		LastAttemptAt: receivedAt,
+		NextProbeAt:   fixedNow,
+	}
+	account := &Account{
+		ID: 79, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Status: StatusActive,
+		Credentials: map[string]any{"api_key": "sk-secret", "base_url": "https://upstream.example"},
+		Extra: map[string]any{
+			UpstreamBalanceProbeEnabledExtraKey: true,
+			UpstreamBalanceProbeExtraKey:        previous,
+		},
+	}
+	repo := &upstreamBillingProbeAccountRepo{accounts: map[int64]*Account{79: account}}
+	upstream := &upstreamBillingProbeHTTPStub{responseForURL: func(*http.Request) (*http.Response, error) {
+		return &http.Response{StatusCode: http.StatusInternalServerError, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(`{}`))}, nil
+	}}
+	svc := newUpstreamBillingProbeTestService(repo, upstream, &upstreamBillingProbeSettingRepo{})
+	svc.now = func() time.Time { return fixedNow }
+
+	snap, err := svc.ProbeBalanceAccount(context.Background(), 79)
+
+	require.NoError(t, err)
+	require.Equal(t, UpstreamBillingProbeStatusFailed, snap.Status)
+	require.Equal(t, "http_error", snap.LastError)
+	require.Equal(t, previous.Data, snap.Data)
+	require.Equal(t, previous.ReceivedAt, snap.ReceivedAt)
+	require.Equal(t, previous.FreshUntil, snap.FreshUntil)
+	require.False(t, snap.NextProbeAt.Before(fixedNow.Add(24*time.Minute)))
+	require.False(t, snap.NextProbeAt.After(fixedNow.Add(36*time.Minute)))
+}
+
 func TestProbeBalanceRejectsNewAPIUnlimitedWithoutUserToken(t *testing.T) {
 	account := &Account{ID: 79, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Status: StatusActive, Credentials: map[string]any{"api_key": "sk-secret", "base_url": "https://upstream.example"}, Extra: map[string]any{UpstreamBalanceProbeEnabledExtraKey: true}}
 	repo := &upstreamBillingProbeAccountRepo{accounts: map[int64]*Account{79: account}}
@@ -307,7 +346,19 @@ func TestProbeBalanceUsesNewAPIUserCredentialsWithOptionalUserHeader(t *testing.
 func TestProbeBalanceNewAPIUserFailuresDoNotFallback(t *testing.T) {
 	for _, status := range []int{http.StatusUnauthorized, http.StatusForbidden} {
 		t.Run(http.StatusText(status), func(t *testing.T) {
-			account := &Account{ID: 81, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Status: StatusActive, Credentials: map[string]any{"api_key": "model-key", "base_url": "https://upstream.example", "newapi_access_token": "dashboard-token"}, Extra: map[string]any{UpstreamBalanceProbeEnabledExtraKey: true}}
+			receivedAt := time.Date(2026, time.July, 23, 0, 0, 0, 0, time.UTC)
+			freshUntil := receivedAt.Add(time.Hour)
+			account := &Account{
+				ID: 81, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Status: StatusActive,
+				Credentials: map[string]any{"api_key": "model-key", "base_url": "https://upstream.example", "newapi_access_token": "dashboard-token"},
+				Extra: map[string]any{
+					UpstreamBalanceProbeEnabledExtraKey: true,
+					UpstreamBalanceProbeExtraKey: &UpstreamBalanceProbeSnapshot{
+						Status: UpstreamBillingProbeStatusOK, Data: map[string]any{"remaining": 9.5},
+						ReceivedAt: &receivedAt, FreshUntil: &freshUntil, LastAttemptAt: receivedAt, NextProbeAt: freshUntil,
+					},
+				},
+			}
 			repo := &upstreamBillingProbeAccountRepo{accounts: map[int64]*Account{81: account}}
 			upstream := &upstreamBillingProbeHTTPStub{responseForURL: func(req *http.Request) (*http.Response, error) {
 				body := `{"success":true,"data":{"quota_per_unit":50}}`
@@ -325,6 +376,9 @@ func TestProbeBalanceNewAPIUserFailuresDoNotFallback(t *testing.T) {
 			require.NoError(t, err)
 			require.Equal(t, UpstreamBillingProbeStatusFailed, snap.Status)
 			require.Equal(t, "newapi_user_auth_failed", snap.LastError)
+			require.Nil(t, snap.Data)
+			require.Nil(t, snap.ReceivedAt)
+			require.Nil(t, snap.FreshUntil)
 			require.NotContains(t, snap.LastError, "dashboard-token")
 			for _, req := range upstream.requests {
 				require.NotEqual(t, "/v1/usage", req.URL.Path)
